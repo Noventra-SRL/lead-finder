@@ -1,0 +1,107 @@
+/* ---------- Servizi consigliati e catalogo ---------- */
+
+.lead-audit {
+  display: block;
+  margin-top: var(--space-1);
+}
+
+.text-warn {
+  color: var(--warn);
+}
+
+/* servizi consigliati: elenco numerato con filetti, nessun riquadro */
+.matches {
+  border-top: 1px solid var(--rule-strong);
+}
+
+.match {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4) 0 var(--space-5);
+  border-bottom: 1px solid var(--rule);
+}
+
+.match__head {
+  display: grid;
+  grid-template-columns: 2rem 1fr auto;
+  align-items: baseline;
+  gap: var(--space-3);
+}
+
+.match__rank {
+  font-size: var(--text-lg);
+  color: var(--ink-3);
+}
+
+.match__title {
+  font-family: var(--font-cond);
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+.match__score .mono {
+  font-size: var(--text-xl);
+}
+
+.match__text,
+.match__verify {
+  max-width: 72ch;
+}
+
+.match__verify {
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--accent);
+}
+
+.match__evidence {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.match-status {
+  gap: var(--space-2);
+}
+
+.review-form {
+  max-width: 56ch;
+}
+
+/* catalogo */
+.service-list > li + li {
+  border-top: 1px solid var(--rule);
+}
+
+.service {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4) 0;
+}
+
+.service__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+}
+
+.service__name {
+  font-family: var(--font-cond);
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+.service__text {
+  max-width: 72ch;
+  color: var(--ink-2);
+}
+
+@media (max-width: 640px) {
+  .match__head {
+    grid-template-columns: 1.5rem 1fr;
+  }
+
+  .match__score {
+    grid-column: 2;
+  }
+}

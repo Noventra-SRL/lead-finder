@@ -1,0 +1,154 @@
+/* ---------- Audit dei siti ---------- */
+
+.sub-title {
+  font-family: var(--font-cond);
+  font-size: var(--text-md);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+/* selezione nell'elenco delle aziende */
+.selection {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3) var(--space-4);
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--rule-strong);
+}
+
+.col-select {
+  width: 36px;
+}
+
+.col-select input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+/* rilievi: un filetto a sinistra con il colore della gravità, nessun riquadro */
+.finding-group {
+  margin-top: var(--space-5);
+}
+
+.finding-group .sub-title {
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--rule-strong);
+}
+
+.findings > li + li {
+  border-top: 1px solid var(--rule);
+}
+
+.finding {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4) 0;
+}
+
+.finding__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2) var(--space-3);
+}
+
+.finding__title {
+  flex: 1 1 240px;
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+
+.finding__text {
+  max-width: 72ch;
+  color: var(--ink-2);
+}
+
+.finding__fix {
+  max-width: 72ch;
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--accent);
+}
+
+.evidence {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  background: var(--sunken);
+  font-size: var(--text-sm);
+}
+
+.evidence__pair {
+  display: grid;
+  grid-template-columns: minmax(120px, max-content) 1fr;
+  gap: var(--space-3);
+}
+
+.evidence dt {
+  color: var(--ink-3);
+}
+
+.evidence dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.evidence__list {
+  margin: 0;
+  padding-left: var(--space-4);
+}
+
+/* contenuti rilevati: elenco a due colonne, pieno/vuoto */
+.signals {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: var(--space-2) var(--space-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-sm);
+}
+
+.signals__on span[aria-hidden] {
+  color: var(--ok);
+}
+
+.signals__off {
+  color: var(--ink-3);
+}
+
+.limits {
+  margin: 0;
+  padding-left: var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--ink-2);
+}
+
+.limits li + li {
+  margin-top: var(--space-1);
+}
+
+/* nomi di dominio e URL lunghi vanno a capo invece di uscire dallo schermo */
+.page-head__title,
+.table td.mono,
+.props dd.mono {
+  overflow-wrap: anywhere;
+}
+
+.page-head__lede .status {
+  vertical-align: baseline;
+}
+
+@media (max-width: 640px) {
+  .evidence__pair {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+
+  .col-select {
+    width: auto;
+  }
+}

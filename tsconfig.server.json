@@ -1,0 +1,31 @@
+{
+  // Server (server/), script e test: eseguiti direttamente da Node (rimozione dei tipi), senza compilazione.
+  // erasableSyntaxOnly vieta la sintassi che Node non sa rimuovere (enum, namespace, parameter properties).
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "types": ["node"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": false,
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "include": [
+    "server",
+    "shared",
+    "scripts",
+    "vite.config.ts",
+    "vitest.config.ts",
+    "vitest.postgres.config.ts",
+    "vitest.live.config.ts"
+  ]
+}

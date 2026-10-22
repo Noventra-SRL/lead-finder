@@ -1,0 +1,59 @@
+/*
+ * Design system di Lead Finder — valori di base.
+ * Strumento interno di lavoro: carta calda, inchiostro, filetti sottili al posto di riquadri e ombre,
+ * un solo colore d'accento (blu reale) e colori di segnale riservati agli stati.
+ * Tipografia: IBM Plex Sans (testo), Plex Sans Condensed (titoli ed etichette), Plex Mono (dati, orari, codici).
+ */
+
+:root {
+  --paper: #f4f3ef;
+  --surface: #fbfaf7;
+  --sunken: #ebe9e3;
+  --ink: #14161b;
+  --ink-2: #474c56;
+  /* testo secondario: contrasto ≥ 4.5:1 su carta e superfici (WCAG AA) */
+  --ink-3: #5f646d;
+  --rule: #d9d6ce;
+  --rule-strong: #14161b;
+
+  --accent: #2343c9;
+  --accent-hover: #1a35a6;
+  --accent-wash: #e6eaf9;
+  --on-accent: #ffffff;
+
+  --ok: #2b6e47;
+  --ok-wash: #e3efe7;
+  --warn: #8f5a00;
+  --warn-wash: #f6ecd8;
+  --danger: #b0261b;
+  --danger-wash: #f8e4e1;
+
+  --font-sans: 'IBM Plex Sans', system-ui, sans-serif;
+  --font-cond: 'IBM Plex Sans Condensed', 'IBM Plex Sans', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-md: 0.9375rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.5rem;
+  --text-2xl: 2.25rem;
+  --text-3xl: 3.5rem;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 72px;
+
+  --radius: 2px;
+  --rail-width: 248px;
+  --content-max: 1180px;
+  --focus: 0 0 0 2px var(--paper), 0 0 0 4px var(--accent);
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+
+  color-scheme: light;
+}

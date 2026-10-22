@@ -1,0 +1,138 @@
+/* ---------- Punteggio dei lead ---------- */
+
+/* cella dell'elenco: il numero a sinistra, fascia e affidabilità accanto */
+.lead-cell {
+  display: grid;
+  min-width: 10.5rem;
+  grid-template-columns: 2.6em 1fr;
+  align-items: start;
+  gap: var(--space-2);
+}
+
+.lead-cell__value {
+  font-size: var(--text-lg);
+  line-height: 1.2;
+  text-align: right;
+}
+
+.lead-category {
+  display: block;
+}
+
+/* intestazioni di riga (dimensioni): testo normale, allineato in alto come le celle */
+.table tbody th[scope='row'] {
+  padding: var(--space-3) var(--space-3) var(--space-3) 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-md);
+  letter-spacing: 0;
+  text-transform: none;
+  vertical-align: top;
+  color: var(--ink);
+}
+
+/* valori come "100/100" o "30 → 30%" non vanno spezzati */
+.nowrap {
+  white-space: nowrap;
+}
+
+/* intestazione della scheda: numero grande, poi spiegazione e prossimo passo */
+.score-head {
+  display: grid;
+  grid-template-columns: minmax(96px, max-content) 1fr;
+  gap: var(--space-5);
+  align-items: start;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--rule-strong);
+}
+
+.score-head__value {
+  margin: 0;
+  font-size: var(--text-3xl);
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.score-head__text {
+  max-width: 68ch;
+}
+
+/* segnali: tre colonne separate da filetti */
+.signal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-5);
+}
+
+.signal-col {
+  display: grid;
+  align-content: start;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--rule);
+}
+
+.signal-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-sm);
+}
+
+/* fatto misurato e opportunità dedotta devono essere distinguibili anche senza colore */
+.signal-kind {
+  font-family: var(--font-cond);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+.signal-kind--inference {
+  color: var(--accent);
+}
+
+.signal-kind--inference::after {
+  content: ' ~';
+}
+
+.top-findings,
+.capability-list {
+  display: grid;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.capability-list {
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+}
+
+.code-area {
+  min-height: 280px;
+  padding: var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  resize: vertical;
+}
+
+@media (max-width: 640px) {
+  .score-head {
+    grid-template-columns: 1fr;
+    gap: var(--space-3);
+  }
+
+  .lead-cell__value {
+    text-align: left;
+  }
+
+  /* tabella a blocchi: l'intestazione di riga fa da titolo del blocco */
+  .table--stack tbody th[scope='row'] {
+    display: block;
+    padding: 0 0 var(--space-1);
+    border: 0;
+    font-weight: 600;
+  }
+}

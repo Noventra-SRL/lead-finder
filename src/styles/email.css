@@ -1,0 +1,283 @@
+/*
+ * Fase 9 — email commerciali. Stesso linguaggio dell'applicazione: filetti, inchiostro, un solo accento; il testo
+ * dell'email è il protagonista (colonna larga, righe leggibili), strumenti e prove in una colonna laterale.
+ */
+
+.page-head-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.page-head-row > :first-child {
+  flex: 1 1 520px;
+}
+
+.page-head-row > .btn {
+  margin-bottom: var(--space-5);
+}
+
+/* stato della configurazione dell'invio: una riga, non un riquadro */
+.sending-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+}
+
+.sending-status p {
+  flex: 1 1 360px;
+  color: var(--ink-2);
+}
+
+.nav__badge {
+  min-width: 20px;
+  padding: 0 5px;
+  border: 1px solid var(--warn);
+  border-radius: var(--radius);
+  color: var(--warn);
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+}
+
+.email-legal {
+  max-width: 80ch;
+  margin-top: var(--space-5);
+}
+
+/* ---------- nuova email: scelta dell'azienda ---------- */
+
+.email-chosen {
+  font-size: var(--text-lg);
+}
+
+.business-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--rule);
+}
+
+.business-results__item {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  padding: var(--space-3) var(--space-2);
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.business-results__item:hover,
+.business-results__item:focus-visible {
+  background: var(--accent-wash);
+}
+
+/* ---------- spazio di lavoro ---------- */
+
+.email-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+  gap: var(--space-6);
+  align-items: start;
+  margin-top: var(--space-5);
+}
+
+.email-form {
+  max-width: 78ch;
+}
+
+.email-body {
+  min-height: 34rem;
+  font-size: var(--text-md);
+  line-height: 1.6;
+  tab-size: 2;
+}
+
+.email-actions {
+  padding-top: var(--space-2);
+}
+
+.email-actions__copy {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-left: auto;
+}
+
+.email-aside .section {
+  grid-template-columns: 1fr;
+  gap: var(--space-3);
+  padding: var(--space-4) 0;
+}
+
+/* etichetta sopra il valore: colonne strette (barra laterale, dialogo) */
+.props--compact {
+  grid-template-columns: 1fr;
+}
+
+.props--compact dt {
+  padding: var(--space-2) 0 0;
+  border-bottom: 0;
+  font-size: var(--text-xs);
+}
+
+.props--compact dd {
+  padding: 2px 0 var(--space-2);
+}
+
+.evidence-list {
+  margin: 0;
+  padding-left: 1.1em;
+  font-size: var(--text-sm);
+}
+
+.evidence-list li + li {
+  margin-top: var(--space-1);
+}
+
+.send-dialog__blockers {
+  padding: var(--space-3);
+  border-left: 3px solid var(--danger);
+  background: var(--danger-wash);
+  font-size: var(--text-sm);
+}
+
+.send-dialog__blockers ul,
+.send-dialog__warnings {
+  margin: var(--space-1) 0 0;
+  padding-left: 1.1em;
+  font-size: var(--text-sm);
+}
+
+.send-dialog__warnings {
+  color: var(--warn);
+}
+
+.email-history li + li {
+  margin-top: var(--space-2);
+}
+
+@media (max-width: 1100px) {
+  .email-grid {
+    grid-template-columns: 1fr;
+  }
+  .email-body {
+    min-height: 24rem;
+  }
+}
+
+@media (max-width: 560px) {
+  .email-actions__copy {
+    margin-left: 0;
+  }
+  .page-head-row > .btn {
+    margin-bottom: 0;
+  }
+}
+
+/* ---------- composer rapido ---------- */
+
+.composer {
+  width: min(760px, calc(100vw - 32px));
+}
+
+.composer__body {
+  min-height: 18rem;
+  line-height: 1.55;
+}
+
+.composer__blockers {
+  margin: 0;
+  padding: var(--space-2) var(--space-3) var(--space-2) calc(var(--space-3) + 1.1em);
+  border-left: 3px solid var(--danger);
+  background: var(--danger-wash);
+  font-size: var(--text-sm);
+}
+
+.composer__legal {
+  max-width: 70ch;
+}
+
+.composer__done {
+  padding: var(--space-3) var(--space-4);
+  border-left: 3px solid var(--ok);
+  background: var(--ok-wash);
+}
+
+.composer__done-title {
+  font-weight: 600;
+}
+
+/* ---------- tabella dei potenziali clienti ---------- */
+
+.prospects td {
+  vertical-align: top;
+}
+
+.prospects__name {
+  font-weight: 500;
+}
+
+.prospects__meta,
+.prospects__site {
+  display: block;
+}
+
+.prospects__site {
+  overflow-wrap: anywhere;
+}
+
+.prospects__score {
+  display: grid;
+  gap: 2px;
+  max-width: 34ch;
+}
+
+.prospects__value {
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+.prospects__reason {
+  line-height: 1.4;
+}
+
+.prospects__actions {
+  white-space: nowrap;
+}
+
+.prospects__actions > * + * {
+  margin-left: var(--space-2);
+}
+
+.filters--compact {
+  gap: var(--space-3);
+}
+
+.business-actions {
+  margin: var(--space-2) 0 var(--space-4);
+}
+
+.tools-list {
+  margin: 0;
+  padding-left: 1.1em;
+}
+
+.tools-list li + li {
+  margin-top: var(--space-2);
+}
+
+@media (max-width: 720px) {
+  .prospects__actions {
+    white-space: normal;
+  }
+}

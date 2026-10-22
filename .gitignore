@@ -1,0 +1,16 @@
+node_modules
+dist
+coverage
+playwright-report
+test-results
+# dati locali di PostgreSQL incorporato (sviluppo e test end-to-end)
+.data
+# segreti: solo .env.example è versionato
+.env
+.env.*
+!.env.example
+*.log
+# copie del database (dati reali: mai versionate)
+backups
+# cache di TypeScript
+*.tsbuildinfo

@@ -1,0 +1,9 @@
+{
+  // Test end-to-end: codice Node che passa funzioni al browser (page.evaluate), quindi servono anche i tipi del DOM.
+  // Separato da tsconfig.server.json perché il server non deve poter usare globali del browser.
+  "extends": "./tsconfig.server.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM"]
+  },
+  "include": ["e2e", "playwright.config.ts"]
+}

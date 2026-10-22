@@ -1,0 +1,106 @@
+/* ---------- Valutazione commerciale AI ---------- */
+
+.ai-headline {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-4);
+  align-items: center;
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--rule-strong);
+  border-bottom: 1px solid var(--rule);
+}
+
+.ai-headline__score {
+  font-size: var(--text-3xl);
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+
+.ai-components td,
+.ai-components th {
+  vertical-align: top;
+}
+
+.ai-components__value {
+  white-space: nowrap;
+}
+
+/* barra di lettura del valore: un filetto, il numero resta l'informazione */
+.ai-bar {
+  display: block;
+  width: 72px;
+  height: 3px;
+  margin-top: var(--space-1);
+  background: var(--rule);
+}
+
+.ai-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+.ai-signals {
+  align-items: start;
+}
+
+.ai-details {
+  padding-top: var(--space-3);
+}
+
+@media (max-width: 640px) {
+  .ai-headline__score {
+    font-size: var(--text-2xl);
+  }
+}
+
+/* ---------- valutazione di tutte le aziende ---------- */
+
+.ai-coverage__figure {
+  font-size: var(--text-lg);
+}
+
+.ai-coverage__head {
+  display: grid;
+  gap: var(--space-2);
+  max-width: 72ch;
+}
+
+.ai-coverage__counts {
+  display: grid;
+  margin: 0;
+  border-top: 1px solid var(--rule);
+}
+
+.ai-coverage__row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--space-4);
+  align-items: baseline;
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.ai-coverage__row dt,
+.ai-coverage__row dd {
+  margin: 0;
+}
+
+.ai-coverage__row dd {
+  font-size: var(--text-lg);
+  font-variant-numeric: tabular-nums;
+}
+
+.ai-coverage__row--alert dd {
+  color: var(--danger);
+}
+
+.ai-coverage-summary {
+  margin-bottom: var(--space-4);
+  color: var(--ink-2);
+}
+
+/* il pannello resta nella colonna della pagina: nessun figlio la allarga */
+.ai-coverage {
+  grid-template-columns: minmax(0, 1fr);
+}
