@@ -55,7 +55,10 @@ export type AuditAction =
   | 'email.generated'
   | 'email.sent'
   | 'email.send_failed'
-  | 'email.verified';
+  | 'email.verified'
+  | 'email.reply_received'
+  | 'email.reply_handled'
+  | 'email.inbox_checked';
 
 export async function audit(
   db: Queryable,

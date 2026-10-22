@@ -34,6 +34,18 @@ export interface Signals {
   otaLinks: Signal;
   social: Signal;
   platforms: string[];
+  /** Strumenti di terze parti riconosciuti dal codice (analytics, pixel pubblicitari, CRM, chat, prenotazioni). */
+  tools: Tool[];
+  /** Agenzia citata nei crediti del sito («realizzato da», «powered by»), solo con formula esplicita. */
+  agency: { name: string; href: string } | null;
+  /** Pagina o link «lavora con noi»: l'azienda cerca personale. */
+  hiring: Signal;
+}
+
+export type ToolCategory = 'analytics' | 'advertising' | 'marketing' | 'chat' | 'booking' | 'payments';
+export interface Tool {
+  name: string;
+  category: ToolCategory;
 }
 
 interface Page {
@@ -104,6 +116,81 @@ const merge = (...signals: Signal[]): Signal => {
   const evidence = [...new Set(signals.flatMap((s) => s.evidence))].slice(0, 5);
   return { detected: signals.some((s) => s.detected), evidence };
 };
+
+/*
+ * Impronte di strumenti di terze parti (da Harvey, tech_detect.py, con aggiunte italiane): host di script distintivi,
+ * mai parole generiche, per tenere bassi i falsi positivi.
+ */
+const TOOL_FINGERPRINTS: [string, ToolCategory, RegExp][] = [
+  ['Google Analytics', 'analytics', /googletagmanager\.com\/gtag\/js|google-analytics\.com\/(analytics|ga)\.js/],
+  ['Google Tag Manager', 'analytics', /googletagmanager\.com\/gtm\.js/],
+  ['Matomo', 'analytics', /matomo\.(js|php)|piwik\.(js|php)/],
+  ['Hotjar', 'analytics', /static\.hotjar\.com/],
+  ['Microsoft Clarity', 'analytics', /clarity\.ms\/tag/],
+  ['Plausible', 'analytics', /plausible\.io\/js/],
+  ['Meta Pixel', 'advertising', /connect\.facebook\.net\/[^"']*fbevents\.js/],
+  ['Google Ads', 'advertising', /googleadservices\.com\/pagead\/conversion|gtag\(['"]config['"],\s*['"]AW-/],
+  ['LinkedIn Insight', 'advertising', /snap\.licdn\.com\/li\.lms-analytics/],
+  ['TikTok Pixel', 'advertising', /analytics\.tiktok\.com/],
+  ['HubSpot', 'marketing', /js\.hs-scripts\.com|js\.hsforms\.net/],
+  ['Mailchimp', 'marketing', /chimpstatic\.com|list-manage\.com\/subscribe/],
+  ['Klaviyo', 'marketing', /static\.klaviyo\.com/],
+  ['ActiveCampaign', 'marketing', /trackcmp\.net/],
+  ['Brevo', 'marketing', /sibforms\.com|sendinblue\.com|brevo\.com\/js/],
+  ['MailUp', 'marketing', /mailup\.(com|it)\/(js|frontend)/],
+  ['Intercom', 'chat', /widget\.intercom\.io|js\.intercomcdn\.com/],
+  ['Tidio', 'chat', /code\.tidio\.co/],
+  ['Crisp', 'chat', /client\.crisp\.chat/],
+  ['Zendesk', 'chat', /static\.zdassets\.com/],
+  ['LiveChat', 'chat', /cdn\.livechatinc\.com/],
+  ['Tawk.to', 'chat', /embed\.tawk\.to/],
+  ['Calendly', 'booking', /assets\.calendly\.com|calendly\.com\/[\w-]+\//],
+  ['Stripe', 'payments', /js\.stripe\.com/],
+  ['PayPal', 'payments', /paypal\.com\/sdk\/js|paypalobjects\.com/],
+];
+
+export function detectTools(html: string): Tool[] {
+  const h = html.slice(0, 600_000);
+  return TOOL_FINGERPRINTS.filter(([, , re]) => re.test(h)).map(([name, category]) => ({ name, category }));
+}
+
+/*
+ * Agenzia nei crediti (da Harvey, detect_agency): solo un link esterno preceduto da una formula esplicita
+ * («realizzato da», «powered by», …). Un link nudo nel footer non basta: un'agenzia sbagliata citata in un'email è
+ * peggio di nessuna.
+ */
+const CREDIT =
+  /\b(realizzat[oa]|sviluppat[oa]|progettat[oa]|creat[oa]|design|sito|web\s*design|grafica|powered|designed|developed|made|built)\s+(da|by|con)\s*:?\s*$/i;
+const NOT_AGENCY =
+  /facebook|instagram|linkedin|twitter|x\.com|youtube|tiktok|google|apple\.com|wordpress\.org|wix\.com|shopify|iubenda|cookiebot|w3\.org|schema\.org|jquery|whatsapp|tripadvisor|booking\.com/;
+
+export function detectAgency(html: string, siteHost: string): { name: string; href: string } | null {
+  const footer = /<footer\b[\s\S]*?<\/footer>/i.exec(html)?.[0] ?? html.slice(-15_000);
+  const own = siteHost.replace(/^www\./, '').toLowerCase();
+  for (const link of footer.matchAll(/<a\b[^>]*href=["'](https?:\/\/[^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi)) {
+    const href = link[1]!;
+    let host: string;
+    try {
+      host = new URL(href).hostname.replace(/^www\./, '').toLowerCase();
+    } catch {
+      continue;
+    }
+    if (!host || host === own || host.endsWith(`.${own}`) || own.endsWith(`.${host}`) || NOT_AGENCY.test(host))
+      continue;
+    const name = link[2]!
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!name || name.length > 60) continue;
+    const before = footer
+      .slice(Math.max(0, link.index! - 160), link.index)
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/\s+/g, ' ');
+    if (CREDIT.test(before)) return { name, href: `https://${host}/` };
+  }
+  return null;
+}
 
 /** Piattaforme e CMS riconoscibili dal codice (solo indizi). */
 export function detectPlatforms(html: string, m: PageMeasurements): string[] {
@@ -225,5 +312,14 @@ export function detectSignals(pages: Page[]): Signals {
       evidence: [...new Set(pages.flatMap((p) => p.m.socialDomains))].slice(0, 5),
     },
     platforms: [...new Set(pages.flatMap((p) => detectPlatforms(p.html, p.m)))],
+    tools: [...new Map(pages.flatMap((p) => detectTools(p.html)).map((t) => [t.name, t])).values()],
+    agency: pages[0] ? detectAgency(pages[0].html, new URL(pages[0].url).hostname) : null,
+    hiring: find(
+      pages,
+      [
+        /lavora con noi|unisciti al (nostro )?team|posizioni aperte|offerte di lavoro|candidatur[ae] spontane[ae]|\bcareers?\b|we.?re hiring/,
+      ],
+      allLinks,
+    ),
   };
 }

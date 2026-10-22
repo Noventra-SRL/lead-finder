@@ -24,6 +24,8 @@ export function useApi<T>(path: string | null, poll?: number | false) {
         if (!cancelled) setResult({ key, data, error: null });
       },
       (e: unknown) => {
+        // richiesta annullata all'uscita: nessun errore da mostrare
+        if (e instanceof ApiError && e.code === 'ABORTED') return;
         if (!cancelled)
           setResult({
             key,

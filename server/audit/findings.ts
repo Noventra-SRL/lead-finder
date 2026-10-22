@@ -590,6 +590,39 @@ export const FINDINGS = {
     actionable: false,
     service: null,
   }),
+  CONTENT_TOOLS: d({
+    category: 'content',
+    severity: 'info',
+    observation: 'info',
+    title: 'Strumenti di marketing riconosciuti',
+    explanation:
+      'Il codice delle pagine carica strumenti di terze parti riconoscibili (statistiche, pixel pubblicitari, email marketing, chat, prenotazioni o pagamenti).',
+    remediation: 'Informazione utile per capire come l’azienda misura e promuove il sito.',
+    actionable: false,
+    service: null,
+  }),
+  CONTENT_AGENCY: d({
+    category: 'content',
+    severity: 'info',
+    observation: 'info',
+    title: 'Agenzia citata nei crediti del sito',
+    explanation:
+      'Il fondo pagina cita esplicitamente chi ha realizzato il sito («realizzato da», «powered by»). L’azienda potrebbe avere già un fornitore.',
+    remediation: 'Da considerare prima del contatto: non citare il fornitore attuale nelle email.',
+    actionable: false,
+    service: null,
+  }),
+  CONTENT_HIRING: d({
+    category: 'content',
+    severity: 'info',
+    observation: 'info',
+    title: 'L’azienda cerca personale',
+    explanation:
+      'Le pagine esaminate contengono una sezione o un link «lavora con noi» o simili: l’azienda è in crescita.',
+    remediation: 'Informazione utile per il contatto: un’azienda che assume è spesso disposta a investire.',
+    actionable: false,
+    service: null,
+  }),
   /* ---------- indicatori di settore (opportunità, non requisiti) ---------- */
   IND_NO_OPENING_HOURS: d({
     category: 'industry',

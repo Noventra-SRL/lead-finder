@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { addReview, assessmentOf, estimate } from '../../ai/assess.ts';
+import { pendingForChat, submitFromChat } from '../../ai/chat.ts';
 import {
   activeAiConfig,
   COMPONENT_LABEL,
@@ -234,6 +235,40 @@ export const aiRoutes: Route[] = [
       return created({ reviewed: true });
     },
   },
+  // valutazione dalla chat (solo sviluppo e prove, solo amministratori): prompt in uscita, risposta in entrata
+  {
+    method: 'GET',
+    pattern: /^\/api\/ai\/chat\/pending$/,
+    access: 'admin',
+    async handle(ctx) {
+      sessionOf(ctx);
+      chatAllowed(ctx);
+      const q = parseQuery(
+        z.object({
+          limit: z.coerce.number().int().min(1).max(20).default(5),
+          ids: z
+            .string()
+            .regex(/^[0-9a-f,-]{36,4000}$/)
+            .optional(),
+        }),
+        ctx.url.searchParams,
+      );
+      return ok(await pendingForChat(ctx.db, { limit: q.limit, businessIds: q.ids?.split(',') }));
+    },
+  },
+  {
+    method: 'POST',
+    pattern: /^\/api\/ai\/chat\/assessments$/,
+    access: 'admin',
+    async handle(ctx) {
+      const session = sessionOf(ctx);
+      chatAllowed(ctx);
+      const body = parseBody(z.object({ businessId: z.uuid(), output: z.unknown() }).strict(), ctx.body);
+      const outcome = await submitFromChat(ctx.db, ctx.state.ai.config, body.businessId, body.output, session.user.id);
+      if (outcome.status === 'failed') return ok({ outcome });
+      return ok({ outcome, assessment: await assessmentOf(ctx.db, body.businessId, new Map()) });
+    },
+  },
   {
     method: 'POST',
     pattern: /^\/api\/ai\/estimate$/,
@@ -294,3 +329,8 @@ export const aiRoutes: Route[] = [
     },
   })),
 ];
+
+/** La valutazione dalla chat esiste solo fuori dalla produzione. */
+function chatAllowed(ctx: Context) {
+  if (ctx.state.config.env === 'production') throw new HttpError(404, 'NOT_FOUND', 'Risorsa non trovata.');
+}

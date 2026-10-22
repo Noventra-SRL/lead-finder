@@ -1,12 +1,15 @@
 import { useState, type FormEvent } from 'react';
-import { Link, useSearchParams } from 'react-router';
+import { Link, useNavigate, useSearchParams } from 'react-router';
 import {
   ApiError,
   post,
   type BusinessSummary,
   type EmailList,
   type EmailMeta,
+  type EmailReply,
   type EmailStatus,
+  type FollowUp,
+  type InboxStatus,
   type Paged,
   type SendingStatus,
 } from '../api/client.ts';
@@ -63,7 +66,7 @@ export const STATUS_TONE: Record<EmailStatus, 'ok' | 'warn' | 'danger' | 'idle'>
 
 const SENDING_TONE: Record<SendingStatus['state'], 'ok' | 'warn' | 'danger' | 'idle'> = {
   ready: 'ok',
-  missing: 'idle',
+  missing: 'danger',
   verification_needed: 'warn',
   provider_error: 'danger',
 };
@@ -105,9 +108,28 @@ export function SendingStatusBar({ status, onChange }: { status: SendingStatus; 
         </Button>
       )}
       {error && <p className="field__error">{error}</p>}
+      {status.deliverability && (
+        <details className="deliverability">
+          <summary>
+            Controllo DNS di {status.deliverability.domain}: {status.deliverability.ready ? 'superato' : 'non superato'}{' '}
+            · {formatDateTime(status.deliverability.at)}
+          </summary>
+          <ul>
+            {status.deliverability.checks.map((c) => (
+              <li key={c.code}>
+                <Status tone={CHECK_TONE[c.status]}>{CHECK_LABEL[c.status]}</Status> <strong>{c.label}</strong>:{' '}
+                {c.detail}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
     </section>
   );
 }
+
+const CHECK_TONE = { ok: 'ok', warn: 'warn', fail: 'danger', unknown: 'idle' } as const;
+const CHECK_LABEL = { ok: 'OK', warn: 'Attenzione', fail: 'Non superato', unknown: 'Non verificabile' } as const;
 
 /** Storico dei messaggi: bozze, inviate, non riuscite, archiviate (con ricerca e ordinamento). */
 function HistoryView() {
@@ -242,11 +264,216 @@ function HistoryView() {
   );
 }
 
+// ---------------------------------------------------------------- risposte
+
+const REPLY_TONE: Record<string, 'ok' | 'warn' | 'danger' | 'idle'> = {
+  interessato: 'ok',
+  domanda: 'ok',
+  obiezione: 'warn',
+  persona_sbagliata: 'warn',
+  non_interessato: 'idle',
+  fuori_ufficio: 'idle',
+  altro: 'idle',
+  disiscrizione: 'danger',
+  rimbalzo: 'danger',
+};
+
+/**
+ * Risposte lette dalla casella (IMAP, sola lettura) e abbinate alle email inviate. «Rispondi» crea una bozza nello
+ * stesso thread, dalla proposta dell'AI se c'è: si invia dall'editor con la conferma di sempre.
+ */
+function RepliesView({ inbox, onChange }: { inbox: InboxStatus | null; onChange: () => void }) {
+  const navigate = useNavigate();
+  const [all, setAll] = useState(false);
+  const list = useApi<{ open: number; items: EmailReply[] }>(`/emails/replies?stato=${all ? 'tutte' : 'aperte'}`);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const act = (key: string, run: () => Promise<unknown>) => {
+    setBusy(key);
+    setError(null);
+    run()
+      .then(() => {
+        list.reload();
+        onChange();
+      })
+      .catch((e: unknown) => setError(e instanceof ApiError ? e.message : 'Operazione non riuscita.'))
+      .finally(() => setBusy(null));
+  };
+  return (
+    <>
+      <section className="filters filters--compact" aria-label="Lettura della casella">
+        <div className="filters__row">
+          <p className="small">
+            {!inbox?.configured
+              ? 'Lettura delle risposte non configurata: imposta IMAP_HOST sul server (vedi .env.example). Intanto registra le risposte a mano dalla vista «In attesa».'
+              : inbox.lastError
+                ? inbox.lastError
+                : inbox.lastRunAt
+                  ? `Casella letta ${formatRelative(inbox.lastRunAt)}${inbox.workerActive ? ', poi ogni pochi minuti' : ''}.`
+                  : 'Casella non ancora letta.'}
+          </p>
+          {inbox?.configured && (
+            <Button
+              variant="ghost"
+              busy={busy === 'check'}
+              onClick={() => act('check', () => post('/email/inbox/check'))}
+            >
+              Controlla ora
+            </Button>
+          )}
+          <label className="check check--inline filters__check">
+            <input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} />
+            <span>Mostra anche quelle gestite</span>
+          </label>
+        </div>
+        {error && <p className="field__error">{error}</p>}
+      </section>
+      {list.loading && !list.data && <Loading />}
+      {list.error && <ErrorNotice error={list.error} onRetry={list.reload} />}
+      {list.data && list.data.items.length === 0 && (
+        <Empty title="Nessuna risposta da gestire">
+          Le risposte alle email commerciali compaiono qui appena la casella viene letta.
+        </Empty>
+      )}
+      {list.data && list.data.items.length > 0 && (
+        <ul className="replies">
+          {list.data.items.map((r) => (
+            <li key={r.id} className="replies__item">
+              <div className="replies__head">
+                <Status tone={REPLY_TONE[r.category] ?? 'idle'}>{r.categoryLabel}</Status>{' '}
+                <Link to={`/aziende/${r.businessId}`}>{r.businessName}</Link>{' '}
+                <span className="small muted">
+                  · <span className="mono">{r.from}</span> · {formatDateTime(r.receivedAt)}
+                  {r.classifiedBy === 'ai' ? ' · classificata dall’AI' : ''}
+                </span>
+              </div>
+              {r.summary && <p>{r.summary}</p>}
+              <details>
+                <summary>Testo ricevuto: {r.subject || 'senza oggetto'}</summary>
+                <p className="replies__body">{r.body}</p>
+              </details>
+              {r.suggestedReply && (
+                <details>
+                  <summary>Bozza di risposta proposta</summary>
+                  <p className="replies__body">{r.suggestedReply}</p>
+                </details>
+              )}
+              {r.category === 'disiscrizione' && (
+                <p className="small">L’azienda è stata segnata «non contattare»: nessun altro messaggio partirà.</p>
+              )}
+              {!r.handled && (
+                <div className="replies__actions">
+                  {r.kind === 'reply' && r.category !== 'disiscrizione' && (
+                    <Button
+                      variant="secondary"
+                      busy={busy === `draft-${r.id}`}
+                      onClick={() =>
+                        act(`draft-${r.id}`, () =>
+                          post<{ emailId: string }>(`/emails/replies/${r.id}/draft`).then((d) =>
+                            navigate(`/email/${d.emailId}`),
+                          ),
+                        )
+                      }
+                    >
+                      Rispondi
+                    </Button>
+                  )}
+                  <Button
+                    variant="ghost"
+                    busy={busy === `done-${r.id}`}
+                    onClick={() => act(`done-${r.id}`, () => post(`/emails/replies/${r.id}/handled`))}
+                  >
+                    Segna come gestita
+                  </Button>
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
+  );
+}
+
+// ---------------------------------------------------------------- follow-up
+
+/**
+ * Follow-up delle sequenze non ancora inviati: si aprono e si inviano dall'editor, con la stessa conferma del primo
+ * messaggio. Quelli fermati (risposta, rimbalzo, CRM) restano visibili con il motivo.
+ */
+function FollowUpView() {
+  const list = useApi<{ items: FollowUp[] }>('/emails/followups');
+  if (list.loading && !list.data) return <Loading />;
+  if (list.error) return <ErrorNotice error={list.error} onRetry={list.reload} />;
+  const items = list.data?.items ?? [];
+  if (items.length === 0)
+    return (
+      <Empty title="Nessun follow-up in programma">
+        Dopo ogni email inviata viene preparata la bozza del follow-up successivo (fino a due), da inviare solo con la
+        tua conferma.
+      </Empty>
+    );
+  const due = items.filter((f) => f.due).length;
+  return (
+    <>
+      <p className="small muted results-count" aria-live="polite">
+        <span className="mono">{due}</span> follow-up da inviare su <span className="mono">{items.length}</span> in
+        programma
+      </p>
+      <div className="table-wrap">
+        <table className="table table--stack">
+          <caption className="visually-hidden">Follow-up delle sequenze</caption>
+          <thead>
+            <tr>
+              <th scope="col">Azienda</th>
+              <th scope="col">Passo</th>
+              <th scope="col">Previsto</th>
+              <th scope="col">Stato</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((f) => (
+              <tr key={f.id}>
+                <td data-label="Azienda">
+                  <Link to={`/email/${f.id}`}>{f.businessName}</Link>
+                </td>
+                <td data-label="Passo">
+                  {f.step === 2 ? 'Secondo messaggio' : 'Ultimo messaggio'}
+                  <span className="small muted">
+                    {' '}
+                    · primo inviato {f.firstSentAt ? formatDateTime(f.firstSentAt) : '—'}
+                  </span>
+                </td>
+                <td data-label="Previsto" className="small">
+                  {f.dueAt ? formatDateTime(f.dueAt) : '—'}
+                </td>
+                <td data-label="Stato">
+                  {f.stopped ? (
+                    <>
+                      <Status tone="idle">Fermato</Status> <span className="small">{f.stopped}</span>
+                    </>
+                  ) : f.due ? (
+                    <Status tone="warn">Da inviare</Status>
+                  ) : (
+                    <Status tone="ok">In programma</Status>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
 // ---------------------------------------------------------------- spazio di lavoro
 
 const VIEWS = [
   { id: 'da-contattare', label: 'Da contattare' },
   { id: 'in-attesa', label: 'In attesa' },
+  { id: 'follow-up', label: 'Follow-up' },
+  { id: 'risposte', label: 'Risposte' },
   { id: 'storico', label: 'Storico' },
 ] as const;
 type View = (typeof VIEWS)[number]['id'];
@@ -384,7 +611,15 @@ export function EmailListPage() {
           </Link>
         ))}
       </nav>
-      {view === 'storico' ? <HistoryView /> : <ProspectView key={view} view={view} />}
+      {view === 'storico' ? (
+        <HistoryView />
+      ) : view === 'follow-up' ? (
+        <FollowUpView />
+      ) : view === 'risposte' ? (
+        <RepliesView inbox={meta.data?.inbox ?? null} onChange={meta.reload} />
+      ) : (
+        <ProspectView key={view} view={view} />
+      )}
       <p className="small">
         <Link to="/pipeline">Trattative (fasi, attività e follow-up)</Link> · <Link to="/promemoria">Promemoria</Link>
       </p>

@@ -187,6 +187,9 @@ byte; certificato in scadenza entro 21 giorni; prestazioni con punteggio sotto 9
 | `CONTENT_NO_SOCIAL`           | info    | Nessun collegamento ai social             | Digital Marketing           |
 | `CONTENT_JS_RENDERED`         | info    | Contenuti generati da JavaScript          | —                           |
 | `CONTENT_PLATFORM`            | info    | Piattaforma del sito riconosciuta         | —                           |
+| `CONTENT_TOOLS`               | info    | Strumenti di marketing riconosciuti       | —                           |
+| `CONTENT_AGENCY`              | info    | Agenzia citata nei crediti del sito       | —                           |
+| `CONTENT_HIRING`              | info    | L’azienda cerca personale                 | —                           |
 
 #### Settore
 
@@ -206,6 +209,12 @@ byte; certificato in scadenza entro 21 giorni; prestazioni con punteggio sotto 9
 I rilievi di settore dipendono dalla categoria dell'azienda (ad esempio menù e prenotazioni per la ristorazione,
 prenotazione diretta e camere per gli hotel, orari e catalogo per farmacie e negozi). Le aree di servizio sono quelle
 pubblicate su [noventra.it](https://www.noventra.it/); la Fase 5 le renderà configurabili.
+
+Strumenti, agenzia e ricerca di personale (`server/audit/signals.ts`, regole portate da Harvey) sono solo informativi:
+gli strumenti si riconoscono dagli host distintivi degli script (statistiche, pixel pubblicitari, email marketing, chat,
+prenotazioni, pagamenti), mai da parole generiche; l'agenzia solo da un link esterno nel fondo pagina preceduto da una
+formula esplicita («realizzato da», «powered by», …), esclusi social e piattaforme; la ricerca di personale da testi o
+link come «lavora con noi» o «posizioni aperte».
 
 ## Prestazioni (PageSpeed Insights)
 

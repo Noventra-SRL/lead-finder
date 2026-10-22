@@ -1,6 +1,6 @@
 /*
- * Sezioni dell'applicazione. Il menu mostra solo quattro voci (Dashboard, Trova aziende, Email commerciali,
- * Impostazioni): il lavoro quotidiano è trovare un'azienda e scriverle. Le altre sezioni restano tutte disponibili
+ * Sezioni dell'applicazione. Il menu mostra cinque voci (Dashboard, Trova aziende, Email commerciali, Trattative,
+ * Impostazioni): il lavoro quotidiano è trovare un'azienda, scriverle e seguire la trattativa. Le altre sezioni restano tutte disponibili
  * (stesse pagine, stessi indirizzi, stessi dati) come viste di dettaglio o avanzate, raggiungibili dalle schede e dagli
  * strumenti avanzati delle Impostazioni; nel menu resta evidenziata la voce a cui appartengono.
  * `phase` indica in quale fase di sviluppo il modulo diventa operativo.
@@ -33,7 +33,7 @@ export const NAV_ITEMS: NavItem[] = [
     path: '/',
     label: 'Dashboard',
     hint: 'Aziende trovate, pronte da contattare, email inviate, risposte attese',
-    lede: 'Aziende trovate, pronte da contattare, email inviate e risposte attese. Ogni numero viene dal database.',
+    lede: 'Il lavoro di oggi: risposte, follow-up e aziende da contattare.',
     phase: 1,
     inNav: true,
   },
@@ -41,7 +41,7 @@ export const NAV_ITEMS: NavItem[] = [
     path: '/trova',
     label: 'Trova aziende',
     hint: 'Cerca le aziende, guarda il punteggio e scrivi alle più promettenti',
-    lede: 'Le aziende da contattare, con punteggio commerciale, recapiti e stato del contatto. Un clic su «Invia email» prepara il messaggio.',
+    lede: 'Le aziende da contattare, in ordine di punteggio. «Invia email» prepara il messaggio.',
     phase: 6,
     inNav: true,
   },
@@ -49,15 +49,23 @@ export const NAV_ITEMS: NavItem[] = [
     path: '/email',
     label: 'Email commerciali',
     hint: 'Chi contattare, chi aspetta una risposta, storico dei messaggi',
-    lede: 'Crea, personalizza e gestisci le email commerciali per i potenziali clienti di Noventra.',
+    lede: 'Da contattare, in attesa, follow-up e risposte: ogni messaggio parte solo con la tua conferma.',
     phase: 9,
+    inNav: true,
+  },
+  {
+    path: '/pipeline',
+    label: 'Trattative',
+    hint: 'Opportunità, fasi, attività e follow-up (CRM)',
+    lede: 'Dalla qualificazione alla chiusura: fasi, attività e prossime azioni. Ogni passo lo decide una persona.',
+    phase: 7,
     inNav: true,
   },
   {
     path: '/impostazioni',
     label: 'Impostazioni',
     hint: 'Account, utenti, sistema e strumenti avanzati',
-    lede: 'Account, password, sessioni attive, utenti del team, stato del sistema e strumenti avanzati.',
+    lede: 'Account, team, stato del sistema e strumenti avanzati.',
     phase: 1,
     inNav: true,
   },
@@ -80,15 +88,6 @@ export const NAV_ITEMS: NavItem[] = [
     phase: 2,
     inNav: false,
     parent: '/trova',
-  },
-  {
-    path: '/pipeline',
-    label: 'Trattative',
-    hint: 'Opportunità, fasi, attività e follow-up (CRM)',
-    lede: 'Le trattative con i potenziali clienti, dalla qualificazione alla chiusura: fasi, attività, follow-up e prossime azioni. Nessun contatto parte in automatico: ogni passo lo decide una persona.',
-    phase: 7,
-    inNav: false,
-    parent: '/email',
   },
   {
     path: '/audit',
@@ -149,6 +148,6 @@ export function isActive(item: NavItem, pathname: string): boolean {
     NAV_ITEMS.some(
       (s) => !s.inNav && s.parent === item.path && [s.path, ...(s.also ?? [])].some((p) => p !== '/' && within(p)),
     ) ||
-    (item.path === '/email' && within('/promemoria'))
+    (item.path === '/pipeline' && within('/promemoria'))
   );
 }

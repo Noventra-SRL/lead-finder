@@ -525,6 +525,18 @@ function Editor({ d, meta, onChange }: { d: EmailDetail; meta: EmailMeta; onChan
               </p>
             </Notice>
           )}
+          {e.sequenceStep > 1 && e.status !== 'sent' && (
+            <Notice
+              tone="info"
+              title={e.sequenceStep === 2 ? 'Follow-up: secondo messaggio' : 'Follow-up: ultimo messaggio'}
+            >
+              <p>
+                Bozza preparata dopo l’invio del messaggio precedente
+                {e.dueAt ? `, prevista per il ${formatDateTime(e.dueAt)}` : ''}. Parte nello stesso thread solo con la
+                tua conferma; si ferma da sola se l’azienda risponde o la trattativa va avanti.
+              </p>
+            </Notice>
+          )}
           {e.status === 'failed' && e.lastError && (
             <Notice tone={e.failureUncertain ? 'warn' : 'error'} title="Invio non riuscito">
               <p>{e.lastError} La bozza è intatta: puoi correggerla e riprovare.</p>

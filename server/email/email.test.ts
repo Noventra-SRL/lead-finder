@@ -6,6 +6,7 @@ import type { Db } from '../db/client.ts';
 import { saveRecord } from '../discovery/store.ts';
 import { client, createTestUser, startTestServer, testDatabase, type TestServer } from '../testing.ts';
 import { emailUserMessage, validateEmailOutput, type EmailContext, type EmailOutput } from './compose.ts';
+import { fakeResolver, readyZone } from './fakeDns.ts';
 import { startFakeSmtp, type FakeSmtp } from './fakeSmtp.ts';
 import { EmailSendError, FakeEmailSender, SmtpSender } from './sender.ts';
 import { DEFAULT_SUBJECT, missingElements, NOVENTRA, STANDARD_BODY, TEMPLATE_NAME } from './template.ts';
@@ -32,8 +33,12 @@ const configured: EmailConfig = {
   fromName: 'Noventra',
   replyTo: null,
   senderAuthorized: true,
+  dkimSelectors: null,
   timeoutMs: 5000,
   missing: [],
+  imap: null,
+  repliesWorker: false,
+  repliesPollMs: 600_000,
 };
 
 type Client = ReturnType<typeof client>;
@@ -471,6 +476,28 @@ describe('invio', () => {
     await s.close();
   });
 
+  it('dominio del mittente che supera i controlli DNS: autorizzato senza EMAIL_SENDER_AUTHORIZED', async () => {
+    const s = await startTestServer(db, {
+      email: { sender, config: { ...configured, senderAuthorized: false }, dns: fakeResolver(readyZone) },
+    });
+    const c = await login(s);
+    expect((await c.request('GET', '/api/email/status')).body.canSend).toBe(false);
+    const v = await c.request('POST', '/api/email/verify');
+    expect(v.status).toBe(200);
+    expect(v.body.status).toMatchObject({ state: 'ready', canSend: true, authorizedBy: 'dns' });
+    expect(v.body.status.deliverability.ready).toBe(true);
+    await s.close();
+  });
+
+  it('dominio del mittente senza record: resta «Verifica necessaria» con i controlli falliti', async () => {
+    const s = await startTestServer(db, { email: { sender, config: { ...configured, senderAuthorized: false } } });
+    const c = await login(s);
+    const v = await c.request('POST', '/api/email/verify');
+    expect(v.body.status).toMatchObject({ state: 'verification_needed', canSend: false, authorizedBy: null });
+    expect(v.body.status.explanation).toMatch(/non supera i controlli DNS/);
+    await s.close();
+  });
+
   it('conferma esplicita obbligatoria; destinatario mancante o non valido bloccato', async () => {
     const c = await login(on);
     const d = await newEmail(c, await business('Bar Senza Email di Prova', { email: null }));
@@ -602,6 +629,63 @@ describe('invio', () => {
     expect(r.status).toBe(409);
     expect(r.body.error.message).toMatch(/non contattare/);
     expect(sender.sent.length).toBe(before);
+  });
+
+  it('sequenza: follow-up in bozza dopo l’invio, nello stesso thread, fermato dalla risposta o dal CRM', async () => {
+    const c = await login(on);
+    const b = await business('Enoteca Sequenza di Prova');
+    const d = (await newEmail(c, b)).email;
+    const first = await send(c, d.id, d.version);
+    expect(first.body.outcome).toBe('accepted');
+    // passo 2 creato come bozza, mai inviato da solo, previsto dopo 3 giorni
+    let list = (await c.request('GET', '/api/emails/followups')).body.items;
+    const step2 = list.find((f: { businessId: string }) => f.businessId === b);
+    expect(step2).toMatchObject({ step: 2, due: false, stopped: null, subject: `Re: ${DEFAULT_SUBJECT}` });
+    expect(new Date(step2.dueAt).getTime() - new Date(step2.firstSentAt).getTime()).toBe(3 * 86_400_000);
+    const full = (await c.request('GET', `/api/emails/${step2.id}`)).body.email;
+    expect(full).toMatchObject({ sequenceStep: 2, sequenceRootId: d.id, status: 'draft' });
+    // in anticipo: avviso, non blocco; nessun avviso di «doppio contatto» per la stessa sequenza
+    const pre = await c.request('GET', `/api/emails/${step2.id}/precheck`);
+    expect(pre.body.canSend).toBe(true);
+    expect(pre.body.warnings.join(' ')).toMatch(/lo stai inviando in anticipo/);
+    expect(pre.body.warnings.join(' ')).not.toMatch(/già stata inviata a questa azienda/);
+    const sent2 = await send(c, step2.id, full.version);
+    expect(sent2.body.outcome).toBe('accepted');
+    // stesso thread: risponde al primo messaggio
+    const msg = sender.sent.at(-1)!;
+    expect(msg.inReplyTo).toBe(first.body.email.providerMessageId);
+    expect(msg.references).toEqual([first.body.email.providerMessageId]);
+    // passo 3 creato; una risposta dell'azienda ferma la sequenza
+    list = (await c.request('GET', '/api/emails/followups')).body.items;
+    const step3 = list.find((f: { businessId: string }) => f.businessId === b);
+    expect(step3).toMatchObject({ step: 3, stopped: null });
+    await db.query(
+      `INSERT INTO commercial_email_replies (email_id, business_id, message_id, from_address, subject, body, received_at,
+         kind, category, classified_by) VALUES ($1, $2, '<r1@cliente.example>', 'info@cliente.example', 'Re', 'Grazie',
+         now(), 'reply', 'interessato', 'rules')`,
+      [d.id, b],
+    );
+    list = (await c.request('GET', '/api/emails/followups')).body.items;
+    expect(list.find((f: { id: string }) => f.id === step3.id)).toMatchObject({
+      due: false,
+      stopped: 'L’azienda ha risposto.',
+    });
+    const s3 = (await c.request('GET', `/api/emails/${step3.id}`)).body.email;
+    expect((await send(c, step3.id, s3.version)).status).toBe(409);
+  });
+
+  it('sequenza: fase avanzata nel CRM ferma il follow-up', async () => {
+    const c = await login(on);
+    const b = await business('Ferramenta Sequenza di Prova');
+    const d = (await newEmail(c, b)).email;
+    const first = await send(c, d.id, d.version);
+    await db.query("UPDATE crm_opportunities SET stage = 'interessato' WHERE id = $1", [
+      first.body.email.opportunityId,
+    ]);
+    const step2 = (await c.request('GET', '/api/emails/followups')).body.items.find(
+      (f: { businessId: string }) => f.businessId === b,
+    );
+    expect(step2.stopped).toMatch(/trattativa nel CRM/);
   });
 
   it('verifica della connessione solo per amministratori, senza inviare', async () => {

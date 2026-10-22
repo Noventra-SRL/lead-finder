@@ -35,6 +35,19 @@
   color: var(--ink-2);
 }
 
+.deliverability {
+  flex: 1 1 100%;
+  color: var(--ink-2);
+}
+
+.deliverability ul {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding: 0;
+  list-style: none;
+}
+
 .nav__badge {
   min-width: 20px;
   padding: 0 5px;
@@ -146,7 +159,7 @@
 
 .send-dialog__blockers {
   padding: var(--space-3);
-  border-left: 3px solid var(--danger);
+  border-radius: var(--radius);
   background: var(--danger-wash);
   font-size: var(--text-sm);
 }
@@ -198,7 +211,7 @@
 .composer__blockers {
   margin: 0;
   padding: var(--space-2) var(--space-3) var(--space-2) calc(var(--space-3) + 1.1em);
-  border-left: 3px solid var(--danger);
+  border-radius: var(--radius);
   background: var(--danger-wash);
   font-size: var(--text-sm);
 }
@@ -209,7 +222,7 @@
 
 .composer__done {
   padding: var(--space-3) var(--space-4);
-  border-left: 3px solid var(--ok);
+  border-radius: var(--radius);
   background: var(--ok-wash);
 }
 
@@ -224,7 +237,15 @@
 }
 
 .prospects__name {
-  font-weight: 500;
+  font-family: var(--font-display);
+  font-size: var(--text-md);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.prospects__name:hover {
+  color: var(--accent);
+  text-decoration: underline;
 }
 
 .prospects__meta,
@@ -242,9 +263,46 @@
   max-width: 34ch;
 }
 
-.prospects__value {
-  font-size: var(--text-lg);
-  font-weight: 600;
+.prospects__band {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* punteggio come casella colorata per fascia (stesso linguaggio degli stati) */
+.score {
+  display: inline-grid;
+  place-items: center;
+  min-width: 40px;
+  height: 30px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius);
+  background: var(--st-idle);
+  color: var(--st-idle-ink);
+  font-family: var(--font-display);
+  font-size: var(--text-md);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.score--alta {
+  background: var(--st-positive);
+  color: var(--st-positive-ink);
+}
+
+.score--promettente {
+  background: var(--st-sent);
+  color: var(--st-sent-ink);
+}
+
+.score--da_qualificare {
+  background: var(--st-attention);
+  color: var(--st-attention-ink);
+}
+
+.score--molto_debole {
+  background: var(--st-blocked);
+  color: var(--st-blocked-ink);
 }
 
 .prospects__reason {
@@ -259,6 +317,10 @@
   margin-left: var(--space-2);
 }
 
+.prospects__actions a.small {
+  color: var(--ink-2);
+}
+
 .filters--compact {
   gap: var(--space-3);
 }
@@ -268,16 +330,161 @@
 }
 
 .tools-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: var(--space-3);
   margin: 0;
-  padding-left: 1.1em;
+  padding: 0;
+  list-style: none;
 }
 
-.tools-list li + li {
-  margin-top: var(--space-2);
+/* riquadro cliccabile per intero: il link copre la casella, il nome accessibile resta il testo del link */
+.tools-list li {
+  position: relative;
+  display: grid;
+  align-content: start;
+  gap: var(--space-1);
+  padding: var(--space-4);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  transition:
+    border-color 160ms var(--ease),
+    box-shadow 160ms var(--ease);
+}
+
+.tools-list li:hover {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-1);
+}
+
+.tools-list a {
+  font-family: var(--font-display);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.tools-list a::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
 }
 
 @media (max-width: 720px) {
   .prospects__actions {
     white-space: normal;
   }
+}
+
+/* risposte lette dalla casella */
+.replies {
+  display: grid;
+  gap: var(--space-4);
+  padding: 0;
+  list-style: none;
+}
+
+.replies__item {
+  display: grid;
+  gap: var(--space-2);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--rule);
+}
+
+.replies__body {
+  white-space: pre-wrap;
+  color: var(--ink-2);
+}
+
+.replies__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* azioni della scheda azienda: una barra unica invece di righe sparse */
+.action-bar {
+  display: grid;
+  gap: var(--space-3);
+  margin-bottom: var(--space-6);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+}
+
+.action-bar .business-actions {
+  margin: 0;
+}
+
+.action-bar > :not(:empty) + :not(:empty) {
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--rule);
+}
+
+.action-bar > :empty {
+  display: none;
+}
+
+/* dentro la barra i blocchi non portano filetti propri */
+.action-bar .business-followup,
+.action-bar .business-followup[open] {
+  border: 0;
+  padding-bottom: 0;
+}
+
+.action-bar .crm-link {
+  margin: 0;
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+/* link sotto gli elenchi: staccati dalla tabella anche senza paginazione */
+.table-wrap + p.small,
+.table-wrap + .pager {
+  margin-top: var(--space-4);
+}
+
+/* conteggi nel testo: carattere del testo con cifre tabellari, non monospazio */
+.results-count .mono,
+.small .mono:not(td .mono) {
+  font-family: var(--font-sans);
+  font-size: inherit;
+}
+
+/* barra azioni: invio e CRM sulla stessa riga */
+.action-bar {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.action-bar > .business-actions {
+  grid-column: 1;
+}
+
+.action-bar > .crm-link {
+  grid-column: 2;
+  align-self: center;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.action-bar > :nth-child(n + 3) {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 720px) {
+  .action-bar {
+    grid-template-columns: 1fr;
+  }
+
+  .action-bar > .crm-link {
+    grid-column: 1;
+  }
+}
+
+.action-bar > .crm-link:not(:empty) {
+  padding-top: 0;
+  border-top: 0;
 }

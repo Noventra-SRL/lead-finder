@@ -1,44 +1,69 @@
 /*
- * Design system di Lead Finder — valori di base.
- * Strumento interno di lavoro: carta calda, inchiostro, filetti sottili al posto di riquadri e ombre,
- * un solo colore d'accento (blu reale) e colori di segnale riservati agli stati.
- * Tipografia: IBM Plex Sans (testo), Plex Sans Condensed (titoli ed etichette), Plex Mono (dati, orari, codici).
+ * Design system di Lead Finder — «Agenda commerciale».
+ * Identità Noventra (noventra.it): blu cobalto pieno per la barra di navigazione e le azioni, ciano come segnale,
+ * fondo chiaro freddo e inchiostro blu notte. Il lavoro si legge come un'agenda: griglie a filetto sottile e stati come
+ * riquadri pastello pieni (menta = positivo, lilla = follow-up, azzurro = inviata, giallo = da controllare,
+ * rosa = bloccato), sempre con il testo dello stato accanto al colore.
+ * Tipografia: Space Grotesk (titoli, navigazione, numeri grandi: il carattere di noventra.it), IBM Plex Sans (testo),
+ * IBM Plex Mono (dati, orari, codici, numeri tabellari).
  */
 
 :root {
-  --paper: #f4f3ef;
-  --surface: #fbfaf7;
-  --sunken: #ebe9e3;
-  --ink: #14161b;
-  --ink-2: #474c56;
-  /* testo secondario: contrasto ≥ 4.5:1 su carta e superfici (WCAG AA) */
-  --ink-3: #5f646d;
-  --rule: #d9d6ce;
-  --rule-strong: #14161b;
+  --paper: #f2f5f9;
+  --surface: #ffffff;
+  --sunken: #e7edf4;
+  --ink: #0a1638;
+  --ink-2: #39446a;
+  /* testo secondario: contrasto ≥ 4.5:1 su fondo e superfici (WCAG AA) */
+  --ink-3: #56607d;
+  --rule: #d6dee9;
+  --rule-strong: #b7c3d4;
 
-  --accent: #2343c9;
-  --accent-hover: #1a35a6;
-  --accent-wash: #e6eaf9;
+  /* identità Noventra */
+  --accent: #0132cc;
+  --accent-hover: #0027a8;
+  --accent-wash: #e4eaff;
   --on-accent: #ffffff;
+  --signal: #00ccff;
+  --rail: #0132cc;
+  --rail-ink: #ffffff;
+  --rail-ink-2: rgb(255 255 255 / 0.8);
+  --rail-hover: rgb(255 255 255 / 0.1);
 
-  --ok: #2b6e47;
-  --ok-wash: #e3efe7;
-  --warn: #8f5a00;
-  --warn-wash: #f6ecd8;
-  --danger: #b0261b;
-  --danger-wash: #f8e4e1;
+  /* stati: riquadri pastello pieni con inchiostro scuro della stessa famiglia (contrasto ≥ 4.5:1) */
+  --st-positive: #c9f5d5;
+  --st-positive-ink: #0b5228;
+  --st-followup: #e3dbff;
+  --st-followup-ink: #43278c;
+  --st-sent: #d2f1ff;
+  --st-sent-ink: #04476a;
+  --st-attention: #ffebb3;
+  --st-attention-ink: #644400;
+  --st-blocked: #ffd9d6;
+  --st-blocked-ink: #8a1c16;
+  --st-idle: #e7edf4;
+  --st-idle-ink: #39446a;
 
+  --ok: #127a3a;
+  --ok-wash: var(--st-positive);
+  --warn: #8a5d00;
+  --warn-wash: var(--st-attention);
+  --danger: #b4231a;
+  --danger-wash: var(--st-blocked);
+
+  --font-display: 'Space Grotesk', system-ui, sans-serif;
   --font-sans: 'IBM Plex Sans', system-ui, sans-serif;
-  --font-cond: 'IBM Plex Sans Condensed', 'IBM Plex Sans', system-ui, sans-serif;
+  /* etichette e titoli brevi: stesso carattere dei titoli (prima Plex Condensed) */
+  --font-cond: var(--font-display);
   --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
 
   --text-xs: 0.75rem;
   --text-sm: 0.8125rem;
   --text-md: 0.9375rem;
   --text-lg: 1.125rem;
-  --text-xl: 1.5rem;
-  --text-2xl: 2.25rem;
-  --text-3xl: 3.5rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.875rem;
+  --text-3xl: 2.375rem;
 
   --space-1: 4px;
   --space-2: 8px;
@@ -49,11 +74,15 @@
   --space-7: 48px;
   --space-8: 72px;
 
-  --radius: 2px;
-  --rail-width: 248px;
-  --content-max: 1180px;
-  --focus: 0 0 0 2px var(--paper), 0 0 0 4px var(--accent);
-  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --radius: 8px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+  --shadow-1: 0 1px 2px rgb(10 22 56 / 0.05), 0 6px 16px -10px rgb(10 22 56 / 0.18);
+  --shadow-2: 0 2px 4px rgb(10 22 56 / 0.06), 0 18px 40px -20px rgb(10 22 56 / 0.35);
+  --rail-width: 240px;
+  --content-max: 1240px;
+  --focus: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent);
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
 
   color-scheme: light;
 }

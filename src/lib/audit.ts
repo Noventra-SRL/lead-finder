@@ -75,6 +75,7 @@ export const SIGNAL_LABEL: Record<string, string> = {
   catalog: 'Catalogo',
   otaLinks: 'Link a portali di prenotazione',
   social: 'Profili social',
+  hiring: 'Lavora con noi',
 };
 
 export function auditJobStatusText(job: AuditJob): string {

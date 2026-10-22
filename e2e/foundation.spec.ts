@@ -102,17 +102,23 @@ test.describe('navigazione', () => {
     await expectHome(page);
   });
 
-  test('menu essenziale: quattro voci sotto «Principale», le altre sezioni restano raggiungibili', async ({ page }) => {
+  test('menu essenziale: cinque voci, le altre sezioni restano raggiungibili', async ({ page }) => {
     const errors = trackErrors(page);
     const nav = page.getByRole('navigation', { name: 'Sezioni' });
-    await expect(nav.getByText('Principale')).toBeVisible();
-    await expect(nav.getByRole('link')).toHaveText([/Dashboard/, /Trova aziende/, /Email commerciali/, /Impostazioni/]);
+    await expect(nav.getByRole('link')).toHaveText([
+      /Dashboard/,
+      /Trova aziende/,
+      /Email commerciali/,
+      /Trattative/,
+      /Impostazioni/,
+    ]);
     await expect(nav.getByText('non ancora attivo')).toHaveCount(0);
     await expect(nav.getByText('Analisi e strumenti')).toHaveCount(0);
     // ogni voce apre la sua pagina e resta evidenziata
     const pages: [string, string][] = [
       ['Trova aziende', '/trova'],
       ['Email commerciali', '/email'],
+      ['Trattative', '/pipeline'],
       ['Impostazioni', '/impostazioni'],
     ];
     for (const [label, path] of pages) {
@@ -126,7 +132,6 @@ test.describe('navigazione', () => {
     const advanced: [string, string, string][] = [
       ['Nuova ricerca di aziende', '/lead-hunter', 'Trova aziende'],
       ['Database aziende', '/aziende', 'Trova aziende'],
-      ['Trattative', '/pipeline', 'Email commerciali'],
       ['Analisi dei siti web', '/audit', 'Impostazioni'],
       ['Valutazione dei potenziali clienti', '/analisi-ai', 'Impostazioni'],
       ['Servizi Noventra', '/servizi', 'Impostazioni'],

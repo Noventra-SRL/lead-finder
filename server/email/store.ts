@@ -7,6 +7,8 @@ import { blockerFor, insertOpportunity, recordActivity } from '../crm/store.ts';
 import type { Db, Queryable } from '../db/client.ts';
 import { JobError } from '../discovery/jobs.ts';
 import { sectorById } from '../discovery/sectors.ts';
+import { contentChecks } from './gate.ts';
+import { createNextStep, sequenceStop, threadHeaders } from './sequence.ts';
 import { availableObjectives, buildEmailContext, composeWithAi, standardEmail } from './compose.ts';
 import { toSendError, type EmailServices } from './sender.ts';
 import { TEMPLATE_ID, type ModeId, type ObjectiveId, type ToneId } from './template.ts';
@@ -84,6 +86,11 @@ interface Row {
   provider_message_id: string | null;
   last_error: string | null;
   failure_uncertain: boolean;
+  sequence_root_id: string | null;
+  sequence_step: number;
+  due_at: Date | null;
+  bounced_at: Date | null;
+  reply_to_message_id: string | null;
   b_name: string;
   created_by_name: string | null;
   sent_by_name: string | null;
@@ -128,6 +135,10 @@ function emailOut(r: Row) {
     providerMessageId: r.provider_message_id,
     lastError: r.last_error,
     failureUncertain: r.failure_uncertain,
+    sequenceRootId: r.sequence_root_id,
+    sequenceStep: r.sequence_step,
+    dueAt: iso(r.due_at),
+    bouncedAt: iso(r.bounced_at),
   };
 }
 export type EmailOut = ReturnType<typeof emailOut>;
@@ -173,7 +184,7 @@ async function openOpportunity(db: Queryable, businessId: string) {
   return rows[0] ?? null;
 }
 
-async function addRevision(
+export async function addRevision(
   tx: Queryable,
   emailId: string,
   version: number,
@@ -698,20 +709,47 @@ export async function precheck(db: Queryable, id: string, email: EmailServices):
   if (recipientState === 'invalid') blockers.push('L’indirizzo del destinatario non è valido.');
   if (!r.subject.trim()) blockers.push('Manca l’oggetto.');
   if (!r.body.trim()) blockers.push('Il testo è vuoto.');
+  const content = contentChecks(r.subject, r.body);
+  blockers.push(...content.blockers);
+  warnings.push(...content.warnings);
   if (recipientState === 'public_source')
     warnings.push(
       'Indirizzo pubblico indicato dalla fonte (OpenStreetMap): non verificato. Controlla che sia ancora attivo e dell’azienda.',
     );
   if (recipientState === 'manual') warnings.push('Indirizzo inserito a mano: non verificato.');
   if (r.status === 'review') warnings.push('Testo generato dall’AI non ancora rivisto: rileggilo prima di inviare.');
+  if (r.sequence_root_id) {
+    const stopped = await sequenceStop(db, r.sequence_root_id);
+    if (stopped) blockers.push(`Follow-up fermato: ${stopped}`);
+    else if (r.due_at && new Date(r.due_at).getTime() > Date.now())
+      warnings.push(
+        `Follow-up previsto per il ${new Date(r.due_at).toLocaleDateString('it-IT', { timeZone: 'Europe/Rome' })}: lo stai inviando in anticipo.`,
+      );
+  }
+  if (r.recipient) {
+    const { rows: bounced } = await db.query<{ bounced_at: Date }>(
+      `SELECT bounced_at FROM commercial_emails WHERE lower(recipient) = lower($1) AND bounced_at IS NOT NULL
+        ORDER BY bounced_at DESC LIMIT 1`,
+      [r.recipient],
+    );
+    if (bounced[0])
+      blockers.push(
+        `Un messaggio a questo indirizzo è tornato indietro il ${new Date(bounced[0].bounced_at).toLocaleDateString('it-IT', { timeZone: 'Europe/Rome' })}: l’indirizzo non è valido.`,
+      );
+  }
   if (r.failure_uncertain)
     warnings.push(
       'L’ultimo tentativo ha avuto un esito incerto: il messaggio potrebbe essere già partito. Controlla la posta inviata del mittente prima di ritentare.',
     );
   const { rows: recentEmails } = await db.query<{ sent_at: Date; recipient: string }>(
     `SELECT sent_at, recipient FROM commercial_emails WHERE business_id = $1 AND status = 'sent' AND id <> $2
-        AND sent_at > now() - ($3 || ' days')::interval ORDER BY sent_at DESC LIMIT 3`,
-    [b.id, id, String(RECENT_EMAIL_DAYS)],
+        AND sent_at > now() - ($3 || ' days')::interval
+        -- i passi della stessa sequenza sono attesi, non un doppio contatto
+        AND ($4::uuid IS NULL OR (id <> $4 AND sequence_root_id IS DISTINCT FROM $4))
+        -- una risposta a chi ci ha scritto non è un doppio contatto
+        AND $5::text IS NULL
+      ORDER BY sent_at DESC LIMIT 3`,
+    [b.id, id, String(RECENT_EMAIL_DAYS), r.sequence_root_id, r.reply_to_message_id],
   );
   for (const e of recentEmails)
     warnings.push(
@@ -801,6 +839,7 @@ export async function sendEmail(
 
   const domain = check.from.address.split('@')[1] ?? 'noventra.it';
   const messageId = `<${attemptId}@${domain}>`;
+  const thread = await threadHeaders(db, id);
   try {
     const result = await email.sender.send({
       from: check.from,
@@ -809,6 +848,7 @@ export async function sendEmail(
       subject: locked.subject.replace(/[\r\n]+/g, ' '),
       text: locked.body,
       messageId,
+      ...thread,
     });
     email.record(true, 'Ultimo invio accettato dal server di posta.');
     await db.transaction(async (tx) => {
@@ -870,6 +910,8 @@ export async function sendEmail(
         });
         await tx.query('UPDATE crm_activities SET email_id = $2 WHERE id = $1', [activityId, id]);
       }
+      // sequenza: bozza del follow-up successivo (si invia solo con una nuova conferma)
+      await createNextStep(tx, id, userId);
       await audit(tx, {
         userId,
         action: 'email.sent',

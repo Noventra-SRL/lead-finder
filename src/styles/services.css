@@ -50,7 +50,7 @@
 
 .match__verify {
   padding-left: var(--space-3);
-  border-left: 2px solid var(--accent);
+  border-radius: var(--radius);
 }
 
 .match__evidence {

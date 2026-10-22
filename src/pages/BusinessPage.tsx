@@ -21,6 +21,7 @@ import {
   Section,
   Status,
 } from '../components/ui.tsx';
+import { CONTACT_TONE } from '../components/ProspectTable.tsx';
 import { RUN_STATUS, WEBSITE_STATUS } from '../lib/audit.ts';
 import { STAGE_LABEL } from '../lib/crm.ts';
 import { COMPLETENESS_FIELDS, JOB_STATUS, placeLabel } from '../lib/discovery.ts';
@@ -362,27 +363,30 @@ export function BusinessPage() {
       />
 
       {!b.mergedInto && (
-        <div className="row business-actions">
-          <Button
-            disabled={!b.contacts.email || b.contacts.emailKind === 'personal' || Boolean(b.excluded)}
-            title={!b.contacts.email ? 'Email non disponibile' : b.excluded ? 'Azienda da non contattare' : undefined}
-            onClick={() => setComposing(true)}
-          >
-            Invia email
-          </Button>
-          {!b.contacts.email && <span className="small muted">Email non disponibile</span>}
-          {b.contact && <span className="small">Contatto: {b.contact.label}</span>}
+        <div className="action-bar">
+          <div className="row business-actions">
+            <Button
+              disabled={!b.contacts.email || b.contacts.emailKind === 'personal' || Boolean(b.excluded)}
+              title={!b.contacts.email ? 'Email non disponibile' : b.excluded ? 'Azienda da non contattare' : undefined}
+              onClick={() => setComposing(true)}
+            >
+              Invia email
+            </Button>
+            {!b.contacts.email && <span className="small muted">Email non disponibile</span>}
+            {b.contact && (
+              <span className="small">
+                Contatto: <Status tone={CONTACT_TONE[b.contact.status]}>{b.contact.label}</Status>
+              </span>
+            )}
+          </div>
+          <CrmLink business={b} />
+          <BusinessFollowUp business={b} onDone={reload} />
+          <Exclusion business={b} onDone={reload} />
         </div>
       )}
       {composing && (
         <EmailComposer business={{ id: b.id, name: b.name }} onClose={() => setComposing(false)} onSent={reload} />
       )}
-
-      {!b.mergedInto && <CrmLink business={b} />}
-
-      {!b.mergedInto && <BusinessFollowUp business={b} onDone={reload} />}
-
-      {!b.mergedInto && <Exclusion business={b} onDone={reload} />}
 
       {b.mergedInto && (
         <Notice tone="warn" title="Scheda unita a un’altra">

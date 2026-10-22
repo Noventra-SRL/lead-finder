@@ -38,21 +38,34 @@ export function onAuthProblem(listener: Listener): () => void {
 
 const AUTH_CODES = new Set(['UNAUTHENTICATED', 'SESSION_EXPIRED', 'PASSWORD_CHANGE_REQUIRED']);
 
+/** Letture in corso: all'uscita si annullano, così nessuna parte dopo la chiusura della sessione (niente 401). */
+const pendingReads = new Set<AbortController>();
+export function abortPendingReads() {
+  for (const c of pendingReads) c.abort();
+  pendingReads.clear();
+}
+
 export async function api<T>(
   method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
   path: string,
   body?: unknown,
 ): Promise<T> {
   let res: Response;
+  const controller = method === 'GET' ? new AbortController() : null;
+  if (controller) pendingReads.add(controller);
   try {
     res = await fetch(`/api${path}`, {
       method,
       credentials: 'same-origin',
       headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
       body: body !== undefined ? JSON.stringify(body) : undefined,
+      signal: controller?.signal,
     });
   } catch {
+    if (controller?.signal.aborted) throw new ApiError(0, 'ABORTED', 'Richiesta annullata.');
     throw new ApiError(0, 'NETWORK_ERROR', 'Server non raggiungibile. Controlla la connessione e riprova.');
+  } finally {
+    if (controller) pendingReads.delete(controller);
   }
   if (res.status === 204) return undefined as T;
   let data: unknown = null;
@@ -984,7 +997,16 @@ export type StageId =
   | 'non_contattare';
 export type CommercialPriority = 'alta' | 'media' | 'bassa';
 export type ActivityType =
-  'call' | 'contact_attempt' | 'conversation' | 'meeting' | 'follow_up' | 'proposal' | 'note' | 'stage_change';
+  | 'call'
+  | 'contact_attempt'
+  | 'conversation'
+  | 'meeting'
+  | 'follow_up'
+  | 'proposal'
+  | 'note'
+  | 'stage_change'
+  | 'email_sent'
+  | 'email_reply';
 
 export interface CrmMeta {
   stages: { id: StageId; label: string; closed: boolean }[];
@@ -1332,6 +1354,22 @@ export interface HomeOverview {
   aiConfigured: boolean;
 }
 
+export interface AgendaWeek {
+  monday: string;
+  today: string;
+  days: {
+    date: string;
+    events: {
+      kind: 'sent' | 'reply' | 'email_followup' | 'crm_followup';
+      date: string;
+      title: string;
+      business: string;
+      link: string;
+      tone: 'positive' | 'followup' | 'sent' | 'attention' | 'blocked';
+    }[];
+  }[];
+}
+
 export interface HomeOpportunity {
   id: string;
   stage: StageId;
@@ -1457,8 +1495,34 @@ export interface SendingStatus {
   from: { name: string; address: string } | null;
   replyTo: string | null;
   senderAuthorized: boolean;
+  authorizedBy: 'admin' | 'dns' | null;
   missing: string[];
   lastCheck: { at: string; ok: boolean; message: string } | null;
+  deliverability: {
+    at: string;
+    domain: string;
+    ready: boolean;
+    checks: { code: string; status: 'ok' | 'warn' | 'fail' | 'unknown'; label: string; detail: string }[];
+  } | null;
+}
+
+export interface EmailTodo {
+  review: number;
+  replies: number;
+  followupsDue: number;
+}
+
+export interface FollowUp {
+  id: string;
+  businessId: string;
+  businessName: string;
+  recipient: string | null;
+  subject: string;
+  step: 2 | 3;
+  dueAt: string | null;
+  due: boolean;
+  firstSentAt: string | null;
+  stopped: string | null;
 }
 
 export interface EmailMeta {
@@ -1476,6 +1540,33 @@ export interface EmailMeta {
   aiConfigured: boolean;
   sending: SendingStatus;
   reviewCount: number;
+  inbox: InboxStatus;
+}
+
+export interface InboxStatus {
+  configured: boolean;
+  workerActive: boolean;
+  lastRunAt: string | null;
+  lastError: string | null;
+}
+
+export interface EmailReply {
+  id: string;
+  emailId: string;
+  emailSubject: string;
+  businessId: string;
+  businessName: string;
+  from: string;
+  subject: string;
+  body: string;
+  receivedAt: string;
+  kind: 'reply' | 'auto_reply' | 'bounce';
+  category: string;
+  categoryLabel: string;
+  classifiedBy: 'rules' | 'ai';
+  summary: string | null;
+  suggestedReply: string | null;
+  handled: boolean;
 }
 
 export interface EmailEvidenceItem {
@@ -1521,6 +1612,10 @@ export interface CommercialEmail {
   providerMessageId: string | null;
   lastError: string | null;
   failureUncertain: boolean;
+  sequenceRootId: string | null;
+  sequenceStep: number;
+  dueAt: string | null;
+  bouncedAt: string | null;
 }
 
 export type EmailListItem = Omit<CommercialEmail, 'body' | 'evidence' | 'internalNotes'>;

@@ -104,11 +104,25 @@ export interface EmailConfig {
   fromAddress: string | null;
   fromName: string;
   replyTo: string | null;
-  /** Dichiarazione dell'amministratore: il server SMTP può inviare da `fromAddress`. Senza, l'invio resta bloccato. */
+  /** Dichiarazione dell'amministratore: il server SMTP può inviare da `fromAddress`. Senza, decide il controllo DNS. */
   senderAuthorized: boolean;
+  /** Selettori DKIM da controllare; null = i più comuni (server/email/deliverability.ts). */
+  dkimSelectors: string[] | null;
   timeoutMs: number;
   /** Variabili mancanti per completare la configurazione (solo nomi, mai valori). */
   missing: string[];
+  /** Lettura delle risposte via IMAP; null = non configurata (le risposte si registrano a mano). */
+  imap: {
+    host: string;
+    port: number;
+    security: 'tls' | 'starttls' | 'none';
+    user: string;
+    password: string;
+    mailbox: string;
+  } | null;
+  /** Lettura periodica della casella in questo processo. */
+  repliesWorker: boolean;
+  repliesPollMs: number;
 }
 
 export interface AiConfig {
@@ -250,6 +264,17 @@ const envSchema = z.object({
   EMAIL_REPLY_TO: optional(z.email('indirizzo email non valido')),
   EMAIL_SENDER_AUTHORIZED: optional(z.enum(['si', 'no'])),
   EMAIL_TIMEOUT_SECONDS: optional(z.coerce.number().int().min(5).max(120)),
+  IMAP_HOST: optional(z.string().regex(/^[A-Za-z0-9.-]{1,253}$/, 'nome host non valido')),
+  IMAP_PORT: optional(z.coerce.number().int().min(1).max(65535)),
+  IMAP_SECURITY: optional(z.enum(['tls', 'starttls', 'none'])),
+  IMAP_USER: optional(z.string().max(320)),
+  IMAP_PASSWORD: optional(z.string().max(1000)),
+  IMAP_MAILBOX: optional(z.string().regex(/^[^\r\n"]{1,200}$/, 'cartella non valida')),
+  REPLIES_WORKER: optional(z.enum(['on', 'off'])),
+  REPLIES_POLL_MINUTES: optional(z.coerce.number().int().min(2).max(1440)),
+  EMAIL_DKIM_SELECTOR: optional(
+    z.string().regex(/^[A-Za-z0-9._-]{1,63}(,[A-Za-z0-9._-]{1,63}){0,9}$/, 'selettori non validi'),
+  ),
 });
 
 /** Nomi di tutte le variabili lette dal server (documentate in .env.example, verificato da un test). */
@@ -324,6 +349,20 @@ function emailConfig(e: z.infer<typeof envSchema>, mode: ServerConfig['env']): E
     throw new ConfigError('Con NODE_ENV=test l’invio email è ammesso solo verso un server SMTP locale (127.0.0.1).');
   if (mode === 'production' && host && security === 'none')
     throw new ConfigError('In produzione SMTP_SECURITY deve essere tls o starttls.');
+  const imapHost = e.IMAP_HOST ?? null;
+  const imapSecurity = e.IMAP_SECURITY ?? (e.IMAP_PORT === 143 ? 'starttls' : 'tls');
+  const imapLocal = imapHost === '127.0.0.1' || imapHost === 'localhost' || imapHost === '::1';
+  if (imapHost && imapSecurity === 'none' && !imapLocal)
+    throw new ConfigError('IMAP_SECURITY=none è ammessa solo con IMAP_HOST locale (127.0.0.1): usa tls o starttls.');
+  if (mode === 'test' && imapHost && !imapLocal)
+    throw new ConfigError(
+      'Con NODE_ENV=test la lettura della casella è ammessa solo verso un server IMAP locale (127.0.0.1).',
+    );
+  // credenziali IMAP: le proprie, altrimenti quelle SMTP (stessa casella nella maggior parte dei provider)
+  const imapUser = e.IMAP_USER ?? e.SMTP_USER ?? null;
+  const imapPassword = e.IMAP_PASSWORD ?? e.SMTP_PASSWORD ?? null;
+  if (imapHost && (!imapUser || !imapPassword))
+    throw new ConfigError('Con IMAP_HOST servono IMAP_USER e IMAP_PASSWORD (o SMTP_USER e SMTP_PASSWORD).');
   // staff@noventra.it è il mittente predefinito solo se un server di invio è configurato
   const fromAddress = e.EMAIL_FROM_ADDRESS ?? (host ? 'staff@noventra.it' : null);
   const missing = [
@@ -345,8 +384,21 @@ function emailConfig(e: z.infer<typeof envSchema>, mode: ServerConfig['env']): E
     fromName: e.EMAIL_FROM_NAME ?? 'Noventra',
     replyTo: e.EMAIL_REPLY_TO ?? null,
     senderAuthorized: e.EMAIL_SENDER_AUTHORIZED === 'si',
+    dkimSelectors: e.EMAIL_DKIM_SELECTOR ? e.EMAIL_DKIM_SELECTOR.split(',') : null,
     timeoutMs: (e.EMAIL_TIMEOUT_SECONDS ?? 30) * 1000,
     missing,
+    imap: imapHost
+      ? {
+          host: imapHost,
+          port: e.IMAP_PORT ?? (imapSecurity === 'tls' ? 993 : 143),
+          security: imapSecurity,
+          user: imapUser!,
+          password: imapPassword!,
+          mailbox: e.IMAP_MAILBOX ?? 'INBOX',
+        }
+      : null,
+    repliesWorker: (e.REPLIES_WORKER ?? 'on') === 'on',
+    repliesPollMs: (e.REPLIES_POLL_MINUTES ?? 10) * 60_000,
   };
 }
 

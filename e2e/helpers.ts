@@ -79,6 +79,6 @@ export async function signInAsAdmin(page: Page, email: string, password: string)
 }
 
 /** Titolo della pagina iniziale: dopo l'accesso l'app è pronta quando compare. */
-export const HOME_TITLE = 'Trova i clienti giusti per Noventra.';
+export const HOME_TITLE = 'Oggi';
 const homeHeading = (page: Page) => page.getByRole('heading', { level: 1, name: HOME_TITLE });
 export const expectHome = (page: Page) => expect(homeHeading(page)).toBeVisible();
