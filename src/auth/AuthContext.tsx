@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { ApiError, get, onAuthProblem, post, type User } from '../api/client.ts';
+import { abortPendingReads, ApiError, get, onAuthProblem, post, type User } from '../api/client.ts';
 
 /*
  * Stato dell'autenticazione nell'interfaccia. La fonte di verità è il server (GET /api/auth/me):
@@ -71,6 +71,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
+    // le letture ancora in coda non devono arrivare al server dopo la chiusura della sessione
+    abortPendingReads();
     try {
       await post('/auth/logout');
     } finally {

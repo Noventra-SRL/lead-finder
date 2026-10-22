@@ -158,12 +158,12 @@ export function SettingsPage() {
           {NAV_ITEMS.filter((s) => !s.inNav).map((s) => (
             <li key={s.path}>
               <Link to={s.path}>{s.label}</Link>
-              <span className="small muted"> · {s.hint}</span>
+              <span className="small muted">{s.hint}</span>
             </li>
           ))}
           <li>
             <Link to="/promemoria">Promemoria</Link>
-            <span className="small muted"> · follow-up scaduti e in scadenza</span>
+            <span className="small muted">Follow-up scaduti e in scadenza</span>
           </li>
         </ul>
       </Section>

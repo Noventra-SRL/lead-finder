@@ -69,7 +69,7 @@
 .finding__fix {
   max-width: 72ch;
   padding-left: var(--space-3);
-  border-left: 2px solid var(--accent);
+  border-radius: var(--radius);
 }
 
 .evidence {

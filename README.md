@@ -5,18 +5,19 @@ Priorità: evidenze verificabili, fonti aperte e tracciate, costi bassi, contatt
 
 Lo sviluppo procede per fasi verificate e approvate una alla volta. **Stato attuale: Fase 10 — qualità, sicurezza e preparazione al rilascio.**
 
-| Fase | Modulo                                                | Stato                              |
-| ---- | ----------------------------------------------------- | ---------------------------------- |
-| 1    | Fondamenta (accesso, database, layout)                | completata                         |
-| 2    | Scoperta aziende                                      | completata                         |
-| 3    | Audit dei siti web                                    | completata                         |
-| 4    | Punteggio dei lead                                    | completata                         |
-| 5    | Abbinamento ai servizi                                | completata                         |
-| 6    | Lead Hunter (ricerca per obiettivo, recapiti, export) | completata                         |
-| 7    | CRM commerciale e pipeline di vendita                 | completata                         |
-| 8    | Esportazioni, follow-up, promemoria, filtri, report   | completata                         |
-| 9    | Email commerciali (modello, AI, invio confermato)     | completata                         |
-| 10   | Qualità, sicurezza e preparazione al rilascio         | completata (vedi docs/rilascio.md) |
+| Fase | Modulo                                                                                 | Stato                                                   |
+| ---- | -------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| 1    | Fondamenta (accesso, database, layout)                                                 | completata                                              |
+| 2    | Scoperta aziende                                                                       | completata                                              |
+| 3    | Audit dei siti web                                                                     | completata                                              |
+| 4    | Punteggio dei lead                                                                     | completata                                              |
+| 5    | Abbinamento ai servizi                                                                 | completata                                              |
+| 6    | Lead Hunter (ricerca per obiettivo, recapiti, export)                                  | completata                                              |
+| 7    | CRM commerciale e pipeline di vendita                                                  | completata                                              |
+| 8    | Esportazioni, follow-up, promemoria, filtri, report                                    | completata                                              |
+| 9    | Email commerciali (modello, AI, invio confermato)                                      | completata                                              |
+| 10   | Qualità, sicurezza e preparazione al rilascio                                          | completata (vedi docs/rilascio.md)                      |
+| 11   | Integrazione da Harvey (deliverability, follow-up, risposte IMAP, analisi sito estesa) | in revisione (docs/email-commerciali.md, docs/audit.md) |
 
 Nell'interfaccia i moduli non ancora sviluppati lo dichiarano apertamente: nessun dato dimostrativo, nessun controllo finto.
 
@@ -94,6 +95,7 @@ Apri http://localhost:5210.
 | `npm run test:e2e`          | compila l'interfaccia e avvia il server reale (porta 8811, database `.data/e2e`); Playwright + Chrome, controlli di accessibilità (axe) e di errori/CSP nel browser |
 | `npm run check`             | tipi + lint + formattazione + test (PGlite e PostgreSQL)                                                                                                            |
 | `npm run test:live`         | facoltativo: due richieste piccole a un server Overpass reale (`LIVE_OVERPASS_URL=… npm run test:live`)                                                             |
+| `npm run chat -- <comando>` | prove dalla chat (sviluppo): ricerche, verifica dei siti, elenco e valutazione AI scritta in Claude Code (docs/valutazione-ai.md)                                   |
 | `npm run geo:update`        | rigenera `server/geo/istat.json` dall'elenco ufficiale ISTAT dei comuni                                                                                             |
 
 Esempi di gestione utenti:
@@ -130,6 +132,7 @@ L'elenco commentato è in [`.env.example`](.env.example).
 | `SCORING_WORKER`        | `on`                  | ricalcoli dei punteggi in background in questo processo (pesi e fasce: Impostazioni, non variabili)               |
 | `PAGESPEED_API_KEY`     | —                     | facoltativa: misure PageSpeed Insights; resta sul server, mai esposta                                             |
 | `HUNTER_WORKER`         | `on`                  | coordinatore delle ricerche di lead in questo processo (vedi docs/lead-hunter.md)                                 |
+| `IMAP_*`, `REPLIES_*`   | —                     | lettura delle risposte in sola lettura (docs/email-commerciali.md, «Risposte dalla casella»)                      |
 | `REMINDERS_WORKER`      | `on`                  | aggiornamento dei promemoria dei follow-up ogni 5 minuti in questo processo (docs/flusso-commerciale.md)          |
 | `SMTP_*`, `EMAIL_*`     | —                     | invio delle email commerciali: server SMTP, mittente, autorizzazione (docs/email-commerciali.md)                  |
 | `AI_API_KEY`            | —                     | facoltativa: valutazione commerciale con AI (Anthropic); resta sul server. Altre `AI_*` in docs/valutazione-ai.md |

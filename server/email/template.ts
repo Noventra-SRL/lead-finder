@@ -60,6 +60,34 @@ export const STANDARD_BODY = [
   SIGNATURE,
 ].join('\n\n');
 
+// ---------------------------------------------------------------- sequenza di follow-up
+
+/*
+ * Follow-up brevi (cadenza da Harvey: passo 2 dopo 3 giorni, passo 3 dopo altri 4, l'ultimo chiude con garbo).
+ * Sono bozze: si inviano solo con la stessa conferma esplicita del primo messaggio.
+ */
+export const FOLLOW_UP_DELAY_DAYS = { 2: 3, 3: 4 } as const;
+
+const FOLLOW_UP_BODY: Record<2 | 3, string> = {
+  2: [
+    GREETING,
+    'ti riscrivo in merito al messaggio di qualche giorno fa su Noventra.',
+    'Se stai pensando di migliorare il sito o la presenza online della tua attività, basta rispondere a questa email con due righe: ti proponiamo una soluzione concreta, con una consulenza gratuita e senza impegno.',
+    SIGNATURE,
+  ].join('\n\n'),
+  3: [
+    GREETING,
+    'è l’ultimo messaggio che ti mando su questo argomento: non voglio riempirti la casella.',
+    'Se in futuro ti servirà un aiuto per il sito o la presenza online, puoi rispondere a questa email in qualsiasi momento.',
+    SIGNATURE,
+  ].join('\n\n'),
+};
+
+export function followUpEmail(step: 2 | 3, rootSubject: string) {
+  const subject = /^re:/i.test(rootSubject) ? rootSubject : `Re: ${rootSubject}`;
+  return { subject: subject.slice(0, 200), body: FOLLOW_UP_BODY[step] };
+}
+
 /** Parti scritte dall'AI (già validate): il resto del messaggio è sempre quello ufficiale. */
 export interface PersonalParts {
   opening: string;

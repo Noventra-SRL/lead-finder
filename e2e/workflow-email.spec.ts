@@ -27,7 +27,7 @@ test('voce «Email commerciali» nella barra laterale: pagina dedicata, stato de
   await expect(page.getByRole('heading', { level: 1, name: 'Email commerciali' })).toBeVisible();
   await expect(navLink(page, 'Email commerciali')).toHaveAttribute('aria-current', 'page');
   await expect(
-    page.getByText('Crea, personalizza e gestisci le email commerciali per i potenziali clienti di Noventra.'),
+    page.getByText('Da contattare, in attesa, follow-up e risposte: ogni messaggio parte solo con la tua conferma.'),
   ).toBeVisible();
   await expect(page.getByRole('link', { name: 'Nuova email' }).first()).toBeVisible();
   // invio configurato verso il server SMTP finto: mittente predefinito staff@noventra.it

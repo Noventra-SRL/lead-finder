@@ -138,6 +138,23 @@ nell'abbinamento a regole.
 80–100 Alta priorità commerciale · 60–79 Opportunità promettente · 40–59 Da qualificare · 20–39 Bassa priorità ·
 0–19 Opportunità molto debole o non adatta. Configurabili; non indicano una conversione garantita.
 
+## Valutazione dalla chat (prove in sviluppo)
+
+Per provare ricerche e valutazioni senza chiave API, la valutazione si può scrivere da una sessione di Claude Code
+(`server/ai/chat.ts`, `scripts/chat.ts`):
+
+1. `GET /api/ai/chat/pending?limit=5[&ids=…]` restituisce il prompt di sistema, lo schema JSON della risposta e, per
+   ogni azienda senza valutazione corrente, lo **stesso messaggio con le prove** che riceverebbe il modello.
+2. Chi usa la chat scrive la risposta nello schema e la invia con `POST /api/ai/chat/assessments`
+   `{ businessId, output }`.
+3. Il server la tratta come la risposta del modello: stessa validazione delle prove (una risposta non valida è
+   rifiutata con l'elenco degli errori e non produce punteggio), stesso calcolo deterministico, stesso salvataggio, con
+   fornitore `chat` e modello «claude-chat (sessione Claude Code)». Nessun token né costo registrato.
+
+Solo amministratori e mai in produzione (404). Comandi: `npm run chat -- accedi | categorie | cerca | stato |
+verifica-siti | aziende | da-valutare | valuta` (dettagli in testa a `scripts/chat.ts`). Quando ci sarà una chiave
+(`AI_API_KEY`) o un altro collegamento, la valutazione automatica riprende lo stesso percorso senza modifiche.
+
 ## Cache e costi
 
 Ogni valutazione ha un'impronta (SHA-256) di prove, catalogo, versione della configurazione, versione del prompt e

@@ -17,6 +17,9 @@ import {
   STATUS_LABEL,
   updateEmail,
 } from '../../email/store.ts';
+import { listFollowUps } from '../../email/sequence.ts';
+import { createReplyDraft, inboxStatus, listReplies, markHandled, pollInbox } from '../../email/replies.ts';
+import { JobError } from '../../discovery/jobs.ts';
 import {
   DEFAULT_SUBJECT,
   MODES,
@@ -36,6 +39,12 @@ import { created, limit, ok, parseBody, parseQuery, sessionOf, type Context, typ
  * POST /api/emails/:id/send, che richiede la conferma esplicita (reviewed e lawful) e un requestId per conferma.
  *
  *  GET   /api/emails/meta                 modello ufficiale, obiettivi, toni, stati, configurazione dell'invio
+ *  GET   /api/emails/replies              risposte lette dalla casella (?stato=aperte|tutte), con categoria e bozza proposta
+ *  POST  /api/emails/replies/:id/handled  risposta gestita
+ *  POST  /api/emails/replies/:id/draft    bozza di risposta nello stesso thread (si invia con la conferma di sempre)
+ *  POST  /api/email/inbox/check           legge subito la casella (IMAP, sola lettura)
+ *  GET   /api/emails/todo                 conteggi del lavoro in attesa: bozze AI da revisionare, risposte, follow-up dovuti
+ *  GET   /api/emails/followups            follow-up non inviati delle sequenze, con data prevista e motivo di arresto
  *  GET   /api/emails                      elenco con filtri (stato, ricerca, azienda, opportunità), ordinamento, conteggi
  *  POST  /api/emails                      nuova bozza dal modello standard { requestId, businessId, opportunityId? }
  *  GET   /api/emails/:id                  scheda: email, azienda, opportunità, storico, revisioni, tentativi
@@ -46,7 +55,7 @@ import { created, limit, ok, parseBody, parseQuery, sessionOf, type Context, typ
  *  GET   /api/emails/:id/precheck         controlli prima dell'invio (blocchi e avvisi)
  *  POST  /api/emails/:id/send             invio confermato { requestId, version, reviewed, lawful, acceptUncertain? }
  *  GET   /api/email/status                stato della configurazione dell'invio (mai credenziali)
- *  POST  /api/email/verify                solo amministratori: verifica connessione e autenticazione SMTP (nessun invio)
+ *  POST  /api/email/verify                solo amministratori: verifica SMTP e controllo DNS del mittente (nessun invio)
  */
 
 const UUID = '([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})';
@@ -83,6 +92,7 @@ export const emailRoutes: Route[] = [
         aiConfigured: ctx.state.ai.provider !== null,
         sending: ctx.state.email.status(),
         reviewCount: await reviewCount(ctx.db),
+        inbox: await inboxStatus(ctx.db, ctx.state.email.config, ctx.state.email.inbox !== null),
       });
     },
   },
@@ -100,9 +110,78 @@ export const emailRoutes: Route[] = [
     access: 'admin',
     async handle(ctx) {
       const session = writes(ctx);
-      const result = await ctx.state.email.verify();
-      await audit(ctx.db, { userId: session.user.id, action: 'email.verified', details: { ok: result.ok } });
+      const [result, domain] = await Promise.all([ctx.state.email.verify(), ctx.state.email.checkDomain()]);
+      await audit(ctx.db, {
+        userId: session.user.id,
+        action: 'email.verified',
+        details: { ok: result.ok, domainReady: domain?.ready ?? null },
+      });
       return ok({ ...result, status: ctx.state.email.status() });
+    },
+  },
+  {
+    method: 'GET',
+    pattern: /^\/api\/emails\/replies$/,
+    async handle(ctx) {
+      sessionOf(ctx);
+      const q = parseQuery(z.object({ stato: z.enum(['aperte', 'tutte']).default('aperte') }), ctx.url.searchParams);
+      return ok(await listReplies(ctx.db, { open: q.stato === 'aperte', limit: 200 }));
+    },
+  },
+  {
+    method: 'POST',
+    pattern: new RegExp(`^/api/emails/replies/${UUID}/handled$`),
+    async handle(ctx) {
+      const id = ctx.match[1]!;
+      const session = writes(ctx);
+      await markHandled(ctx.db, id, session.user.id);
+      return ok({ ok: true });
+    },
+  },
+  {
+    method: 'POST',
+    pattern: new RegExp(`^/api/emails/replies/${UUID}/draft$`),
+    async handle(ctx) {
+      const id = ctx.match[1]!;
+      const session = writes(ctx);
+      return created({ emailId: await createReplyDraft(ctx.db, id, session.user.id) });
+    },
+  },
+  {
+    method: 'POST',
+    pattern: /^\/api\/email\/inbox\/check$/,
+    async handle(ctx) {
+      const session = writes(ctx);
+      const inbox = ctx.state.email.inbox;
+      if (!inbox)
+        throw new JobError(503, 'INBOX_NOT_CONFIGURED', 'Lettura delle risposte non configurata: imposta IMAP_HOST.');
+      const result = await pollInbox(ctx.db, inbox, {
+        ai: ctx.state.ai.provider,
+        mailbox: ctx.state.email.config.imap?.mailbox ?? 'INBOX',
+      });
+      await audit(ctx.db, { userId: session.user.id, action: 'email.inbox_checked', details: result });
+      return ok(result);
+    },
+  },
+  {
+    method: 'GET',
+    pattern: /^\/api\/emails\/todo$/,
+    async handle(ctx) {
+      sessionOf(ctx);
+      const [review, replies, followups] = await Promise.all([
+        reviewCount(ctx.db),
+        ctx.db.query<{ n: number }>('SELECT count(*)::int AS n FROM commercial_email_replies WHERE handled_at IS NULL'),
+        listFollowUps(ctx.db),
+      ]);
+      return ok({ review, replies: replies.rows[0]!.n, followupsDue: followups.filter((f) => f.due).length });
+    },
+  },
+  {
+    method: 'GET',
+    pattern: /^\/api\/emails\/followups$/,
+    async handle(ctx) {
+      sessionOf(ctx);
+      return ok({ items: await listFollowUps(ctx.db) });
     },
   },
   {

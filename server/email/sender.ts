@@ -1,6 +1,8 @@
 import { createTransport } from 'nodemailer';
 import type { EmailConfig } from '../config.ts';
 import type { Logger } from '../logger.ts';
+import { ImapReader, type InboxReader } from './replies.ts';
+import { checkDeliverability, realResolver, type DeliverabilityReport, type DnsResolver } from './deliverability.ts';
 
 /*
  * Invio delle email commerciali (Fase 9): un adattatore SMTP lato server (nodemailer). Le credenziali restano in
@@ -22,6 +24,9 @@ export interface OutgoingEmail {
   text: string;
   /** Message-ID scelto da noi (univoco per tentativo): lo stesso messaggio è riconoscibile nei registri del server. */
   messageId: string;
+  /** Follow-up: risposta ai messaggi precedenti della sequenza (stesso thread nella casella del destinatario). */
+  inReplyTo?: string | null;
+  references?: string[];
 }
 
 export interface SendResult {
@@ -131,6 +136,8 @@ export class SmtpSender implements EmailSender {
         subject: msg.subject,
         text: msg.text,
         messageId: msg.messageId,
+        inReplyTo: msg.inReplyTo ?? undefined,
+        references: msg.references?.length ? msg.references : undefined,
         // nessun pixel di tracciamento, nessun HTML: solo testo
         headers: { 'X-Mailer': 'Noventra Lead Finder' },
       });
@@ -177,6 +184,10 @@ export interface EmailServices {
   sender: EmailSender | null;
   /** Ultimo controllo della connessione (verify o invio): nessun dato sensibile. */
   lastCheck: { at: Date; ok: boolean; message: string } | null;
+  /** Lettura delle risposte (IMAP, sola lettura); null = non configurata. */
+  inbox: InboxReader | null;
+  /** Ultimo controllo DNS del dominio del mittente (MX, SPF, DKIM, DMARC, blocklist). */
+  deliverability: DeliverabilityReport | null;
   status(): {
     state: EmailState;
     label: string;
@@ -185,18 +196,23 @@ export interface EmailServices {
     from: { name: string; address: string } | null;
     replyTo: string | null;
     senderAuthorized: boolean;
+    /** Da dove viene l'autorizzazione: dichiarazione dell'amministratore, controllo DNS o nessuna. */
+    authorizedBy: 'admin' | 'dns' | null;
     missing: string[];
     lastCheck: { at: string; ok: boolean; message: string } | null;
+    deliverability: DeliverabilityReport | null;
   };
   /** Controlla connessione e autenticazione (nessun messaggio inviato). */
   verify(): Promise<{ ok: boolean; message: string }>;
+  /** Controlla via DNS il dominio del mittente (nessun messaggio inviato). */
+  checkDomain(): Promise<DeliverabilityReport | null>;
   /** Registra l'esito di un invio sul controllo della connessione. */
   record(ok: boolean, message: string): void;
 }
 
 export function createEmailServices(
   config: EmailConfig,
-  deps: { sender?: EmailSender | null; log?: Logger } = {},
+  deps: { sender?: EmailSender | null; log?: Logger; dns?: DnsResolver; inbox?: InboxReader | null } = {},
 ): EmailServices {
   const sender =
     deps.sender !== undefined ? deps.sender : config.smtp ? new SmtpSender(config.smtp, config.timeoutMs) : null;
@@ -204,23 +220,31 @@ export function createEmailServices(
     config,
     sender,
     lastCheck: null,
+    inbox: deps.inbox !== undefined ? deps.inbox : config.imap ? new ImapReader(config.imap, config.timeoutMs) : null,
+    deliverability: null,
     status() {
       const configured = Boolean(sender && config.fromAddress);
       const check = services.lastCheck;
+      const report = services.deliverability;
+      const authorizedBy = config.senderAuthorized ? 'admin' : report?.ready ? 'dns' : null;
+      const authorized = authorizedBy !== null;
+      const failed = report?.checks.filter((c) => c.status === 'fail' || c.status === 'unknown') ?? [];
       const state: EmailState = !configured
         ? 'missing'
         : check && !check.ok
           ? 'provider_error'
-          : !config.senderAuthorized || !check
+          : !authorized || !check
             ? 'verification_needed'
             : 'ready';
       const explanation =
         state === 'missing'
-          ? `Imposta sul server ${config.missing.filter((m) => m !== 'EMAIL_SENDER_AUTHORIZED=si').join(', ') || 'SMTP_HOST'} e EMAIL_SENDER_AUTHORIZED=si (vedi .env.example). Bozze e generazione restano disponibili.`
+          ? `Imposta sul server ${config.missing.filter((m) => m !== 'EMAIL_SENDER_AUTHORIZED=si').join(', ') || 'SMTP_HOST'} (vedi .env.example). Bozze e generazione restano disponibili.`
           : state === 'provider_error'
             ? `Ultimo controllo non riuscito: ${check!.message}`
-            : !config.senderAuthorized
-              ? `Il server SMTP è configurato, ma l'amministratore non ha ancora confermato che può inviare da ${config.fromAddress} (SPF/DKIM del dominio). Dopo la verifica imposta EMAIL_SENDER_AUTHORIZED=si.`
+            : !authorized
+              ? report
+                ? `Il dominio di ${config.fromAddress} non supera i controlli DNS (${failed.map((c) => c.label).join(', ') || 'DKIM'}). Correggi i record del dominio e ripeti «Verifica connessione», oppure, dopo una verifica manuale, imposta EMAIL_SENDER_AUTHORIZED=si.`
+                : `Controllo DNS del dominio di ${config.fromAddress} non ancora eseguito: avvia «Verifica connessione».`
               : !check
                 ? 'Connessione al server SMTP non ancora verificata: viene controllata prima del primo invio.'
                 : 'Il server SMTP accetta la connessione e l’autenticazione. «Inviata» indica che il server ha accettato il messaggio, non che sia stato consegnato.';
@@ -228,14 +252,30 @@ export function createEmailServices(
         state,
         label: EMAIL_STATE_LABEL[state],
         // si invia solo con mittente autorizzato e connessione non in errore (verificata prima del primo invio)
-        canSend: configured && config.senderAuthorized && (!check || check.ok),
+        canSend: configured && authorized && (!check || check.ok),
         explanation,
         from: configured ? { name: config.fromName, address: config.fromAddress! } : null,
         replyTo: config.replyTo,
-        senderAuthorized: config.senderAuthorized,
-        missing: config.missing,
+        senderAuthorized: authorized,
+        authorizedBy,
+        missing: authorized ? config.missing.filter((m) => m !== 'EMAIL_SENDER_AUTHORIZED=si') : config.missing,
         lastCheck: check ? { at: check.at.toISOString(), ok: check.ok, message: check.message } : null,
+        deliverability: report,
       };
+    },
+    async checkDomain() {
+      const domain = config.fromAddress?.split('@')[1];
+      if (!domain) return null;
+      try {
+        services.deliverability = await checkDeliverability(domain.toLowerCase(), {
+          dns: deps.dns ?? realResolver(),
+          dkimSelectors: config.dkimSelectors,
+          smtpHost: config.smtp?.host ?? null,
+        });
+      } catch (error) {
+        deps.log?.warn('controllo DNS del mittente non riuscito', { message: (error as Error).message });
+      }
+      return services.deliverability;
     },
     async verify() {
       if (!sender) return { ok: false, message: 'Invio non configurato.' };

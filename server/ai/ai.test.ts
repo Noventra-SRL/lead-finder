@@ -802,3 +802,42 @@ describe('lotti, API e integrazione con CRM e Lead Hunter', () => {
     expect(plain.body.items[0].commercial?.source ?? 'ai').toBe('ai');
   });
 });
+
+describe('valutazione dalla chat (solo sviluppo)', () => {
+  it('prompt in uscita, risposta non valida rifiutata, risposta valida salvata con provider «chat» e punteggio', async () => {
+    const s = await startTestServer(db);
+    const c = client(s.url);
+    await c.request('POST', '/api/auth/login', { email: 'ai.admin@noventra.test', password: PASSWORD });
+    const id = await business('Pizzeria Chat di Prova');
+    const pending = await c.request('GET', `/api/ai/chat/pending?ids=${id}`);
+    expect(pending.status).toBe(200);
+    expect(pending.body.system).toBe(SYSTEM_PROMPT);
+    expect(pending.body.schema.type).toBe('object');
+    const item = pending.body.items[0];
+    expect(item).toMatchObject({ businessId: id, name: 'Pizzeria Chat di Prova' });
+    // risposta per un'altra azienda: rifiutata dalla stessa validazione delle risposte del modello, nessun punteggio
+    const bad = answer(item.prompt, { business_id: '00000000-0000-4000-8000-000000000000' });
+    const r1 = await c.request('POST', '/api/ai/chat/assessments', { businessId: id, output: bad });
+    expect(r1.body.outcome).toMatchObject({ status: 'failed', code: 'invalid_output' });
+    const r2 = await c.request('POST', '/api/ai/chat/assessments', { businessId: id, output: answer(item.prompt) });
+    expect(r2.body.outcome).toMatchObject({ status: 'assessed', current: true });
+    const { rows } = await db.query<{ provider: string; final_score: number | null }>(
+      'SELECT provider, final_score FROM ai_assessments WHERE business_id = $1 AND is_current',
+      [id],
+    );
+    expect(rows[0]).toMatchObject({ provider: 'chat' });
+    expect(rows[0]!.final_score).toBeGreaterThan(0);
+    // valutata: non è più tra quelle da valutare
+    expect((await c.request('GET', `/api/ai/chat/pending?ids=${id}`)).body.items).toHaveLength(0);
+    await s.close();
+  });
+
+  it('solo amministratori; in produzione non esiste', async () => {
+    await createTestUser(db, { email: 'ai.sales@noventra.test', role: 'sales', password: PASSWORD });
+    const s = await startTestServer(db);
+    const c = client(s.url);
+    await c.request('POST', '/api/auth/login', { email: 'ai.sales@noventra.test', password: PASSWORD });
+    expect((await c.request('GET', '/api/ai/chat/pending')).status).toBe(403);
+    await s.close();
+  });
+});

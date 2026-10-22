@@ -103,3 +103,55 @@ kbd,
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ---------- Superfici del browser nel colore del sistema ---------- */
+
+html {
+  scrollbar-color: var(--rule-strong) transparent;
+  scrollbar-width: thin;
+}
+
+input,
+textarea {
+  caret-color: var(--accent);
+}
+
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+
+table,
+.mono {
+  font-variant-numeric: tabular-nums;
+}
+
+/* riquadri apribili: freccia disegnata al posto del triangolo del browser */
+summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  list-style: none;
+  cursor: pointer;
+}
+
+summary::-webkit-details-marker {
+  display: none;
+}
+
+summary::before {
+  content: '';
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin: 0 2px;
+  border-right: 1.75px solid currentColor;
+  border-bottom: 1.75px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 160ms var(--ease);
+}
+
+details[open] > summary::before {
+  transform: rotate(45deg);
+}

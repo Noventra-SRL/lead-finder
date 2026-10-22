@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { expectAccessible, signInAsAdmin, trackErrors, expectHome, openAdvanced } from './helpers.ts';
+import { expectAccessible, signInAsAdmin, trackErrors, expectHome, navLink } from './helpers.ts';
 import { E2E_USERS } from './users.ts';
 
 /*
@@ -26,7 +26,8 @@ const tomorrow = () => {
 test('CRM vuoto: spiega da dove nascono le opportunità', async ({ page }) => {
   const errors = trackErrors(page);
   await signIn(page);
-  await openAdvanced(page, 'Trattative');
+  await navLink(page, 'Trattative').click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Trattative' })).toBeVisible();
   await expect(page.getByText('Nessuna opportunità ancora')).toBeVisible();
   await expectAccessible(page, 'crm vuoto');
   expect(errors).toEqual([]);
@@ -57,7 +58,8 @@ test('aggiunta in blocco dal database lead, senza doppioni, con riepilogo', asyn
 test('pipeline: numeri dal database, Kanban, spostamento esplicito di fase', async ({ page }) => {
   const errors = trackErrors(page);
   await signIn(page);
-  await openAdvanced(page, 'Trattative');
+  await navLink(page, 'Trattative').click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Trattative' })).toBeVisible();
   const metrics = page.locator('.crm-metrics');
   await expect(metrics.locator('.crm-metric').filter({ hasText: 'Opportunità aperte' })).toContainText('2');
   const board = page.getByRole('list', { name: 'Pipeline per fase' });

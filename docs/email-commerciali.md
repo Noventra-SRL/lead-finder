@@ -144,8 +144,31 @@ L'invio usa un server SMTP configurato sul server (`nodemailer`, versione fissat
 - `SMTP_USER`, `SMTP_PASSWORD`;
 - `EMAIL_FROM_ADDRESS`: predefinito staff@noventra.it quando un server è configurato;
 - `EMAIL_FROM_NAME`, `EMAIL_REPLY_TO`;
-- `EMAIL_SENDER_AUTHORIZED`;
+- `EMAIL_SENDER_AUTHORIZED`: `si` forza l'autorizzazione del mittente (vedi «Controllo DNS del mittente»);
+- `EMAIL_DKIM_SELECTOR`: selettori DKIM del provider, separati da virgola (vuoto = i più comuni);
 - `EMAIL_TIMEOUT_SECONDS`.
+
+### Controllo DNS del mittente
+
+All'avvio del server e con «Verifica connessione» il dominio di `EMAIL_FROM_ADDRESS` viene controllato via DNS
+(`server/email/deliverability.ts`, nessun messaggio inviato, nessun servizio a pagamento):
+
+| Controllo    | Superato quando                                                                        |
+| ------------ | -------------------------------------------------------------------------------------- |
+| MX           | almeno un server di posta                                                              |
+| SPF          | un solo record `v=spf1`, senza `+all`/`all` (`?all` = attenzione)                      |
+| DKIM         | chiave pubblica trovata per i selettori indicati o, in mancanza, tra quelli più comuni |
+| DMARC        | politica `quarantine` o `reject` (`none` = attenzione, accettata)                      |
+| Spamhaus DBL | dominio non elencato                                                                   |
+| Spamhaus ZEN | IP del server SMTP non elencato (solo per server non locali)                           |
+
+Se MX, SPF, DKIM e DMARC sono a posto e nessuna blocklist elenca il dominio o il server, il mittente è autorizzato
+senza `EMAIL_SENDER_AUTHORIZED` (lo stato indica «autorizzato dal controllo DNS»). Il dettaglio è nella barra dello
+stato dell'invio.
+
+Limiti: gli `include:` dell'SPF non vengono espansi, quindi un SPF presente non prova che il server SMTP configurato sia
+tra quelli autorizzati; Spamhaus non risponde ai DNS pubblici (8.8.8.8, 1.1.1.1) e in quel caso il controllo è «non
+verificabile» e non blocca; nessuna prova di consegna in casella (servono gli strumenti del provider).
 
 Le credenziali restano sul server: mai nelle risposte, nei registri o nei messaggi d'errore salvati.
 
@@ -154,7 +177,7 @@ Stato mostrato nella pagina:
 | Stato                           | Quando                                                                                                                                                           |
 | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Configurazione email mancante   | Nessun server SMTP: bozze, generazione e copia funzionano, l'invio è disattivato con l'elenco delle variabili da impostare.                                      |
-| Verifica necessaria             | L'amministratore non ha ancora confermato `EMAIL_SENDER_AUTHORIZED=si` (il server SMTP deve poter inviare da quel mittente: SPF/DKIM del dominio).               |
+| Verifica necessaria             | Il dominio del mittente non supera il controllo DNS e l'amministratore non ha impostato `EMAIL_SENDER_AUTHORIZED=si`.                                            |
 | Errore del provider             | L'ultima verifica o l'ultimo invio ha avuto un problema di connessione, autenticazione o mittente.                                                               |
 | Configurazione email completata | Mittente autorizzato e connessione verificata (all'avvio, con «Verifica connessione» degli amministratori o prima del primo invio; la verifica non invia nulla). |
 
@@ -166,6 +189,10 @@ Stato mostrato nella pagina:
    - avvisi: indirizzo non verificato (pubblico dalla fonte o inserito a mano), testo AI non rivisto, email già
      inviata alla stessa azienda negli ultimi 90 giorni, contatti nel CRM negli ultimi 30 giorni, esito incerto del
      tentativo precedente.
+   - controlli sul testo (`server/email/gate.ts`, da Harvey): blocchi per segnaposto non sostituiti (`{nome}`,
+     `[AZIENDA]`) e codice HTML; avvisi per oggetto oltre 90 caratteri o tutto maiuscolo, testo oltre 450 parole,
+     espressioni penalizzate dai filtri antispam («gratis», «clicca qui», «!!», …) e link a siti diversi da
+     noventra.it. Il modello ufficiale li supera senza avvisi.
 3. Servono due conferme: «Ho riletto…» e «Il contatto è lecito…». Il dialogo ricorda che un recapito pubblico non
    autorizza automaticamente comunicazioni commerciali (GDPR, Codice privacy). Annulla non invia nulla.
 4. Il server ripete i controlli e porta l'email in «sending» in modo atomico (due invii contemporanei: ne parte uno).
@@ -185,11 +212,53 @@ Ogni conferma ha un `requestId`: ripeterla, per esempio con un doppio clic o una
 già registrato senza inviare di nuovo. Un invio rimasto «in corso» per un riavvio del server diventa «non riuscito,
 esito incerto», mai «Inviata».
 
+### Sequenze di follow-up
+
+Cadenza portata da Harvey (`server/email/sequence.ts`, migrazione 0012):
+
+1. Quando il server di posta accetta il primo messaggio, viene creata la **bozza** del secondo, prevista 3 giorni dopo
+   l'invio; quando accetta il secondo, la bozza del terzo e ultimo, prevista 4 giorni dopo. Testi standard brevi
+   (`followUpEmail` in `server/email/template.ts`), oggetto «Re: …» del primo messaggio.
+2. Nessun follow-up parte da solo: la vista **Follow-up** (`/email?vista=follow-up`) elenca quelli da inviare, in
+   programma o fermati; si aprono nell'editor e si inviano con la stessa conferma esplicita.
+3. Il follow-up parte nello stesso thread (`In-Reply-To` e `References` verso i messaggi già inviati della sequenza).
+4. La sequenza si ferma da sola, ed è un **blocco** nella conferma, se: l'azienda ha risposto o un messaggio è tornato
+   indietro (lettura della casella, sotto), l'azienda è «non contattare», l'opportunità è oltre «In attesa di risposta»
+   o dopo il primo messaggio è registrata nel CRM una telefonata, una conversazione o un incontro.
+5. Inviarlo prima della data prevista è possibile, con un avviso. I passi della stessa sequenza non generano l'avviso
+   «già inviata a questa azienda».
+
 ### Limiti
 
-- Nessun invio massivo, automatico o di follow-up.
+- Nessun invio massivo o automatico: anche i follow-up partono solo con una conferma.
 - Nessun tracciamento di aperture o clic.
 - 40 invii all'ora per utente.
+
+## Risposte dalla casella (IMAP)
+
+Portato da Harvey (`server/email/replies.ts`). Con `IMAP_HOST` (credenziali `IMAP_USER`/`IMAP_PASSWORD`, o quelle
+SMTP) il server legge la cartella `IMAP_MAILBOX` ogni `REPLIES_POLL_MINUTES` minuti (10) e con «Controlla ora» nella
+vista **Risposte** (`/email?vista=risposte`). La cartella si apre in **sola lettura**: nessun messaggio viene segnato
+come letto, spostato o cancellato. Al primo giro (o se l'UIDVALIDITY cambia) si leggono gli ultimi 30 giorni, poi solo
+i messaggi nuovi, al massimo 200 per giro.
+
+1. **Abbinamento**: `In-Reply-To`/`References` verso un'email inviata; per i rimbalzi il Message-ID citato nel corpo;
+   altrimenti stesso indirizzo del destinatario di un'email inviata negli ultimi 180 giorni. **La posta non collegata
+   non viene salvata.**
+2. **Classificazione**, prima con le regole del codice: rimbalzo (`multipart/report` di consegna o MAILER-DAEMON),
+   risposta automatica (`Auto-Submitted`, «fuori sede», …), richiesta di non essere contattati («cancellatemi», «non
+   contattateci», «STOP», …), rifiuto esplicito. Il resto, se l'AI è configurata, viene classificato dall'AI
+   (interessato, domanda, obiezione, non interessato, persona sbagliata, altro) con un riassunto e una bozza di
+   risposta; il testo ricevuto passa all'AI solo in un blocco di dati, con le istruzioni eventualmente contenute
+   ignorate, e una bozza con prezzi, percentuali, link o telefoni viene scartata. Senza AI resta «altro».
+3. **Effetti automatici, solo protettivi**: rimbalzo → l'email è segnata e un nuovo invio allo stesso indirizzo è
+   bloccato; richiesta di non essere contattati → azienda «non contattare» con il motivo; ogni risposta → attività
+   «Risposta ricevuta» nel CRM e sequenza di follow-up ferma. Le fasi del CRM non cambiano da sole.
+4. **Rispondi** crea una bozza verso il mittente, nello stesso thread (`In-Reply-To`), dalla proposta dell'AI se c'è:
+   si rilegge e si invia dall'editor con la conferma di sempre. **Nessuna risposta parte da sola.**
+
+Si conservano mittente, oggetto, data e il testo senza le parti citate (al massimo 5000 caratteri). Senza `IMAP_HOST`
+la vista lo dice e le risposte si registrano a mano («Registra la risposta» nella vista «In attesa»).
 
 ## Storico e registro
 
@@ -197,13 +266,15 @@ esito incerto», mai «Inviata».
 - Scheda azienda e scheda opportunità mostrano la sezione «Email commerciali» con bozze e inviate distinte dallo stato.
 - Nella pagina dell'email: revisioni, tentativi di invio (esito, errore sicuro da mostrare) e altre email alla stessa
   azienda.
-- Registro delle operazioni: `email.created`, `email.generated`, `email.sent`, `email.send_failed`, `email.verified`.
+- Registro delle operazioni: `email.created`, `email.generated`, `email.sent`, `email.send_failed`, `email.verified`,
+  `email.reply_received`, `email.reply_handled`, `email.inbox_checked`.
 
 ## Configurazione richiesta per inviare davvero
 
 1. Credenziali SMTP del dominio noventra.it (o di un provider transazionale con SMTP) in `.env` sul server.
-2. Verifica che il server SMTP possa inviare come staff@noventra.it (SPF e DKIM del dominio), poi
-   `EMAIL_SENDER_AUTHORIZED=si`.
+2. Record DNS del dominio (SPF, DKIM, DMARC) configurati presso il provider: il controllo DNS li verifica. Solo se il
+   controllo non può passare (es. selettore DKIM non standard senza `EMAIL_DKIM_SELECTOR`) e dopo una verifica
+   manuale: `EMAIL_SENDER_AUTHORIZED=si`.
 3. Riavvio del server e «Verifica connessione» dalla pagina (solo amministratori).
 
 ## Test

@@ -80,11 +80,13 @@ export function ProspectTable({
                 <td data-label="Punteggio commerciale">
                   {c && !excluded ? (
                     <span className="prospects__score">
-                      <span className="prospects__value mono">{c.score}</span>
+                      <span className="prospects__band">
+                        <span className={`score score--${c.band?.id ?? 'none'}`}>{c.score}</span>
+                        <span className="small">{c.band?.label}</span>
+                      </span>
                       <span className="small">
-                        {c.band?.label}
-                        {c.source === 'rules' && <span className="muted"> · a regole</span>}
-                        {c.outdated && <span className="muted"> · da aggiornare</span>}
+                        {c.source === 'rules' && <span className="muted">a regole</span>}
+                        {c.outdated && <span className="muted">{c.source === 'rules' ? ' · ' : ''}da aggiornare</span>}
                       </span>
                       {b.commercialReason && (
                         <span className="small muted prospects__reason" title={b.commercialReason}>
@@ -93,7 +95,7 @@ export function ProspectTable({
                       )}
                     </span>
                   ) : (
-                    <span className="small muted">{b.assessment?.label ?? 'Non ancora valutata'}</span>
+                    <Status tone="warn">{b.assessment?.label ?? 'Non ancora valutata'}</Status>
                   )}
                 </td>
                 <td data-label="Contatto" className="small">
@@ -113,7 +115,13 @@ export function ProspectTable({
                     </Link>
                   )}
                   <Button
-                    variant={b.contact?.status === 'da_contattare' && !waiting ? 'primary' : 'secondary'}
+                    variant={
+                      !canEmail(b)
+                        ? 'ghost'
+                        : b.contact?.status === 'da_contattare' && !waiting
+                          ? 'primary'
+                          : 'secondary'
+                    }
                     disabled={!canEmail(b)}
                     title={
                       !b.contacts.email

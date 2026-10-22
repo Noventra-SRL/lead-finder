@@ -4,7 +4,7 @@ import type { PageMeasurements } from './html.ts';
 import type { TlsInfo } from './net/safeFetch.ts';
 import type { PerformanceOutcome } from './performance/pagespeed.ts';
 import type { Robots } from './robots.ts';
-import type { Signals } from './signals.ts';
+import type { Signals, ToolCategory } from './signals.ts';
 import { bareHost } from './url.ts';
 
 /*
@@ -381,7 +381,27 @@ function content(ctx: AuditContext, out: Finding[]) {
   if (!s.cookie.detected) out.push(finding('CONTENT_NO_COOKIE_INDICATOR', {}, { confidence: 'low' }));
   if (!s.social.detected) out.push(finding('CONTENT_NO_SOCIAL', {}, { confidence: conf }));
   if (s.platforms.length) out.push(finding('CONTENT_PLATFORM', { piattaforme: s.platforms }, { confidence: 'medium' }));
+  if (s.tools.length)
+    out.push(
+      finding(
+        'CONTENT_TOOLS',
+        { strumenti: s.tools.map((t) => `${t.name} (${TOOL_CATEGORY[t.category]})`) },
+        { confidence: 'medium' },
+      ),
+    );
+  if (s.agency)
+    out.push(finding('CONTENT_AGENCY', { agenzia: s.agency.name, sito: s.agency.href }, { confidence: 'medium' }));
+  if (s.hiring.detected) out.push(finding('CONTENT_HIRING', { trovato: s.hiring.evidence }, { confidence: 'medium' }));
 }
+
+const TOOL_CATEGORY: Record<ToolCategory, string> = {
+  analytics: 'statistiche',
+  advertising: 'pubblicità',
+  marketing: 'email marketing',
+  chat: 'chat',
+  booking: 'prenotazioni',
+  payments: 'pagamenti',
+};
 
 function industry(ctx: AuditContext, out: Finding[]) {
   const s = ctx.signals;
@@ -446,7 +466,8 @@ export function summarize(ctx: AuditContext, findings: Finding[]) {
   const signals = ctx.signals
     ? Object.fromEntries(
         Object.entries(ctx.signals)
-          .filter(([k]) => k !== 'platforms')
+          // solo i segnali rilevato/non rilevato (piattaforme, strumenti e agenzia sono rilievi a parte)
+          .filter(([, v]) => v !== null && typeof v === 'object' && 'detected' in v)
           .map(([k, v]) => [k, (v as { detected: boolean }).detected]),
       )
     : null;

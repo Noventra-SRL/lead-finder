@@ -54,6 +54,8 @@ export const ACTIVITY_TYPES = [
   { id: 'stage_change', label: 'Cambio di fase', manual: false },
   // registrata dal sistema solo quando il server di posta accetta un'email commerciale (Fase 9)
   { id: 'email_sent', label: 'Email commerciale inviata', manual: false },
+  // registrata dal sistema quando la lettura della casella trova una risposta a un'email commerciale
+  { id: 'email_reply', label: 'Risposta ricevuta', manual: false },
 ] as const;
 export type ActivityType = (typeof ACTIVITY_TYPES)[number]['id'];
 /** Tipi che una persona può registrare e modificare (il cambio di fase è registrato dal sistema). */

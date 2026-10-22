@@ -11,6 +11,7 @@ import { AuditWorker } from './audit/worker.ts';
 import { createScoringJob, ScoringWorker } from './scoring/jobs.ts';
 import { HuntWorker } from './hunter/worker.ts';
 import { ReminderWorker } from './workflow/reminders.ts';
+import { RepliesWorker } from './email/replies.ts';
 import { createEmailServices } from './email/sender.ts';
 import { recoverStaleSends } from './email/store.ts';
 import { activeCatalog } from './matching/store.ts';
@@ -162,8 +163,23 @@ const emailServices = createEmailServices(config.email, { log });
 const recovered = await recoverStaleSends(db);
 if (recovered) log.warn('invii di email interrotti segnati come «esito incerto»', { count: recovered });
 if (!emailServices.sender) log.warn('invio email non configurato: imposta SMTP_HOST (vedi .env.example)');
-// verifica della connessione SMTP in background (nessun messaggio inviato)
-else void emailServices.verify();
+// verifica della connessione SMTP e controllo DNS del mittente in background (nessun messaggio inviato);
+// nei test nessuna rete verso DNS esterni
+else {
+  void emailServices.verify();
+  if (config.env !== 'test') void emailServices.checkDomain();
+}
+// lettura delle risposte (IMAP, sola lettura) in background: rimbalzi, «non contattatemi», bozze di risposta
+const repliesWorker =
+  emailServices.inbox && config.email.imap && config.email.repliesWorker
+    ? new RepliesWorker(db, emailServices.inbox, {
+        ai: () => aiServices.provider,
+        log,
+        mailbox: config.email.imap.mailbox,
+      })
+    : null;
+repliesWorker?.start(config.email.repliesPollMs);
+if (!emailServices.inbox) log.info('lettura delle risposte non configurata: imposta IMAP_HOST (vedi .env.example)');
 
 const api = createApp(db, {
   log,
@@ -251,6 +267,7 @@ async function shutdown(signal: string) {
         aiWorker?.stop(),
         autoAssessor.stop(),
         reminderWorker?.stop(),
+        repliesWorker?.stop(),
         aiServices.idle(),
       ]);
       await db.close();

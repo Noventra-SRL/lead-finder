@@ -49,7 +49,7 @@ const CANCEL_REASON: Record<string, string> = {
   opportunity_closed: 'Opportunità chiusa',
 };
 /** Attività che contano come "contatto" con l'azienda. */
-const CONTACT_TYPES = `('call', 'contact_attempt', 'conversation', 'meeting', 'email_sent')`;
+const CONTACT_TYPES = `('call', 'contact_attempt', 'conversation', 'meeting', 'email_sent', 'email_reply')`;
 
 const provinceOf = (code: string | null) => {
   const p = code ? geo().province(code) : null;

@@ -31,7 +31,7 @@ export const CONTACT_STATUS_LABEL: Record<ContactStatus, string> = {
 };
 
 /** Tipi di attività del CRM che contano come contatto con l'azienda. */
-export const CONTACT_ACTIVITY_SQL = `('call', 'contact_attempt', 'conversation', 'meeting', 'email_sent')`;
+export const CONTACT_ACTIVITY_SQL = `('call', 'contact_attempt', 'conversation', 'meeting', 'email_sent', 'email_reply')`;
 
 /** Ultimo contatto: email accettata dal server di posta o attività di contatto nel CRM. */
 export const LAST_CONTACT_SQL = `GREATEST(

@@ -156,8 +156,8 @@ function Board({ meta, filters, onChanged }: { meta: CrmMeta; filters: string; o
               void drop(col.id, e.dataTransfer.getData('text/x-opportunity'));
             }}
           >
-            <h2 className="board__title">
-              {col.label} <span className="mono muted">{col.total}</span>
+            <h2 className={`board__title board__title--${col.id}`}>
+              {col.label} <span className="board__count">{col.total}</span>
             </h2>
             {col.items.length === 0 ? (
               <p className="small muted board__empty">Nessuna opportunità.</p>

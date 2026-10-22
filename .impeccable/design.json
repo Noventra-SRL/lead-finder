@@ -1,0 +1,609 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-22T14:48:11.270Z",
+  "title": "Design System: Lead Finder",
+  "extensions": {
+    "colorMeta": {
+      "accent": {
+        "role": "primary",
+        "displayName": "Cobalto Noventra",
+        "canonical": "#0132cc",
+        "tonalRamp": [
+          "oklch(15% 0.2 263.873)",
+          "oklch(26% 0.2 263.873)",
+          "oklch(38% 0.2 263.873)",
+          "oklch(49% 0.2 263.873)",
+          "oklch(61% 0.2 263.873)",
+          "oklch(72% 0.2 263.873)",
+          "oklch(84% 0.2 263.873)",
+          "oklch(95% 0.06 263.873)"
+        ]
+      },
+      "accent-hover": {
+        "role": "primary",
+        "displayName": "Cobalto profondo",
+        "canonical": "#0027a8",
+        "tonalRamp": [
+          "oklch(15% 0.2 263.809)",
+          "oklch(26% 0.2 263.809)",
+          "oklch(38% 0.2 263.809)",
+          "oklch(49% 0.2 263.809)",
+          "oklch(61% 0.2 263.809)",
+          "oklch(72% 0.2 263.809)",
+          "oklch(84% 0.2 263.809)",
+          "oklch(95% 0.06 263.809)"
+        ]
+      },
+      "accent-wash": {
+        "role": "primary",
+        "displayName": "Velo cobalto",
+        "canonical": "#e4eaff",
+        "tonalRamp": [
+          "oklch(15% 0.029 273.103)",
+          "oklch(26% 0.029 273.103)",
+          "oklch(38% 0.029 273.103)",
+          "oklch(49% 0.029 273.103)",
+          "oklch(61% 0.029 273.103)",
+          "oklch(72% 0.029 273.103)",
+          "oklch(84% 0.029 273.103)",
+          "oklch(95% 0.009 273.103)"
+        ]
+      },
+      "on-accent": {
+        "role": "neutral",
+        "displayName": "Bianco su cobalto",
+        "canonical": "#ffffff",
+        "tonalRamp": [
+          "oklch(15% 0.012 89.876)",
+          "oklch(26% 0.012 89.876)",
+          "oklch(38% 0.012 89.876)",
+          "oklch(49% 0.012 89.876)",
+          "oklch(61% 0.012 89.876)",
+          "oklch(72% 0.012 89.876)",
+          "oklch(84% 0.012 89.876)",
+          "oklch(95% 0.004 89.876)"
+        ]
+      },
+      "signal": {
+        "role": "secondary",
+        "displayName": "Ciano segnale",
+        "canonical": "#00ccff",
+        "tonalRamp": [
+          "oklch(15% 0.148 224.27)",
+          "oklch(26% 0.148 224.27)",
+          "oklch(38% 0.148 224.27)",
+          "oklch(49% 0.148 224.27)",
+          "oklch(61% 0.148 224.27)",
+          "oklch(72% 0.148 224.27)",
+          "oklch(84% 0.148 224.27)",
+          "oklch(95% 0.044 224.27)"
+        ]
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "Carta fredda",
+        "canonical": "#f2f5f9",
+        "tonalRamp": [
+          "oklch(15% 0.012 255.475)",
+          "oklch(26% 0.012 255.475)",
+          "oklch(38% 0.012 255.475)",
+          "oklch(49% 0.012 255.475)",
+          "oklch(61% 0.012 255.475)",
+          "oklch(72% 0.012 255.475)",
+          "oklch(84% 0.012 255.475)",
+          "oklch(95% 0.004 255.475)"
+        ]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Superficie",
+        "canonical": "#ffffff",
+        "tonalRamp": [
+          "oklch(15% 0.012 89.876)",
+          "oklch(26% 0.012 89.876)",
+          "oklch(38% 0.012 89.876)",
+          "oklch(49% 0.012 89.876)",
+          "oklch(61% 0.012 89.876)",
+          "oklch(72% 0.012 89.876)",
+          "oklch(84% 0.012 89.876)",
+          "oklch(95% 0.004 89.876)"
+        ]
+      },
+      "sunken": {
+        "role": "neutral",
+        "displayName": "Incavato",
+        "canonical": "#e7edf4",
+        "tonalRamp": [
+          "oklch(15% 0.012 252.09)",
+          "oklch(26% 0.012 252.09)",
+          "oklch(38% 0.012 252.09)",
+          "oklch(49% 0.012 252.09)",
+          "oklch(61% 0.012 252.09)",
+          "oklch(72% 0.012 252.09)",
+          "oklch(84% 0.012 252.09)",
+          "oklch(95% 0.004 252.09)"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Inchiostro blu notte",
+        "canonical": "#0a1638",
+        "tonalRamp": [
+          "oklch(15% 0.068 266.081)",
+          "oklch(26% 0.068 266.081)",
+          "oklch(38% 0.068 266.081)",
+          "oklch(49% 0.068 266.081)",
+          "oklch(61% 0.068 266.081)",
+          "oklch(72% 0.068 266.081)",
+          "oklch(84% 0.068 266.081)",
+          "oklch(95% 0.021 266.081)"
+        ]
+      },
+      "ink-2": {
+        "role": "neutral",
+        "displayName": "Inchiostro secondario",
+        "canonical": "#39446a",
+        "tonalRamp": [
+          "oklch(15% 0.066 270.851)",
+          "oklch(26% 0.066 270.851)",
+          "oklch(38% 0.066 270.851)",
+          "oklch(49% 0.066 270.851)",
+          "oklch(61% 0.066 270.851)",
+          "oklch(72% 0.066 270.851)",
+          "oklch(84% 0.066 270.851)",
+          "oklch(95% 0.02 270.851)"
+        ]
+      },
+      "ink-3": {
+        "role": "neutral",
+        "displayName": "Inchiostro terziario",
+        "canonical": "#56607d",
+        "tonalRamp": [
+          "oklch(15% 0.048 269.794)",
+          "oklch(26% 0.048 269.794)",
+          "oklch(38% 0.048 269.794)",
+          "oklch(49% 0.048 269.794)",
+          "oklch(61% 0.048 269.794)",
+          "oklch(72% 0.048 269.794)",
+          "oklch(84% 0.048 269.794)",
+          "oklch(95% 0.014 269.794)"
+        ]
+      },
+      "rule": {
+        "role": "neutral",
+        "displayName": "Filetto",
+        "canonical": "#d6dee9",
+        "tonalRamp": [
+          "oklch(15% 0.017 256.285)",
+          "oklch(26% 0.017 256.285)",
+          "oklch(38% 0.017 256.285)",
+          "oklch(49% 0.017 256.285)",
+          "oklch(61% 0.017 256.285)",
+          "oklch(72% 0.017 256.285)",
+          "oklch(84% 0.017 256.285)",
+          "oklch(95% 0.005 256.285)"
+        ]
+      },
+      "rule-strong": {
+        "role": "neutral",
+        "displayName": "Filetto marcato",
+        "canonical": "#b7c3d4",
+        "tonalRamp": [
+          "oklch(15% 0.027 257.038)",
+          "oklch(26% 0.027 257.038)",
+          "oklch(38% 0.027 257.038)",
+          "oklch(49% 0.027 257.038)",
+          "oklch(61% 0.027 257.038)",
+          "oklch(72% 0.027 257.038)",
+          "oklch(84% 0.027 257.038)",
+          "oklch(95% 0.008 257.038)"
+        ]
+      },
+      "st-positive": {
+        "role": "status",
+        "displayName": "Menta (positivo)",
+        "canonical": "#c9f5d5",
+        "tonalRamp": [
+          "oklch(15% 0.063 153.496)",
+          "oklch(26% 0.063 153.496)",
+          "oklch(38% 0.063 153.496)",
+          "oklch(49% 0.063 153.496)",
+          "oklch(61% 0.063 153.496)",
+          "oklch(72% 0.063 153.496)",
+          "oklch(84% 0.063 153.496)",
+          "oklch(95% 0.019 153.496)"
+        ]
+      },
+      "st-positive-ink": {
+        "role": "status",
+        "displayName": "Inchiostro menta",
+        "canonical": "#0b5228",
+        "tonalRamp": [
+          "oklch(15% 0.096 151.495)",
+          "oklch(26% 0.096 151.495)",
+          "oklch(38% 0.096 151.495)",
+          "oklch(49% 0.096 151.495)",
+          "oklch(61% 0.096 151.495)",
+          "oklch(72% 0.096 151.495)",
+          "oklch(84% 0.096 151.495)",
+          "oklch(95% 0.029 151.495)"
+        ]
+      },
+      "st-followup": {
+        "role": "status",
+        "displayName": "Lilla (follow-up)",
+        "canonical": "#e3dbff",
+        "tonalRamp": [
+          "oklch(15% 0.049 295.585)",
+          "oklch(26% 0.049 295.585)",
+          "oklch(38% 0.049 295.585)",
+          "oklch(49% 0.049 295.585)",
+          "oklch(61% 0.049 295.585)",
+          "oklch(72% 0.049 295.585)",
+          "oklch(84% 0.049 295.585)",
+          "oklch(95% 0.015 295.585)"
+        ]
+      },
+      "st-followup-ink": {
+        "role": "status",
+        "displayName": "Inchiostro lilla",
+        "canonical": "#43278c",
+        "tonalRamp": [
+          "oklch(15% 0.157 289.23)",
+          "oklch(26% 0.157 289.23)",
+          "oklch(38% 0.157 289.23)",
+          "oklch(49% 0.157 289.23)",
+          "oklch(61% 0.157 289.23)",
+          "oklch(72% 0.157 289.23)",
+          "oklch(84% 0.157 289.23)",
+          "oklch(95% 0.047 289.23)"
+        ]
+      },
+      "st-sent": {
+        "role": "status",
+        "displayName": "Azzurro (inviata)",
+        "canonical": "#d2f1ff",
+        "tonalRamp": [
+          "oklch(15% 0.038 226.783)",
+          "oklch(26% 0.038 226.783)",
+          "oklch(38% 0.038 226.783)",
+          "oklch(49% 0.038 226.783)",
+          "oklch(61% 0.038 226.783)",
+          "oklch(72% 0.038 226.783)",
+          "oklch(84% 0.038 226.783)",
+          "oklch(95% 0.011 226.783)"
+        ]
+      },
+      "st-sent-ink": {
+        "role": "status",
+        "displayName": "Inchiostro azzurro",
+        "canonical": "#04476a",
+        "tonalRamp": [
+          "oklch(15% 0.084 239.747)",
+          "oklch(26% 0.084 239.747)",
+          "oklch(38% 0.084 239.747)",
+          "oklch(49% 0.084 239.747)",
+          "oklch(61% 0.084 239.747)",
+          "oklch(72% 0.084 239.747)",
+          "oklch(84% 0.084 239.747)",
+          "oklch(95% 0.025 239.747)"
+        ]
+      },
+      "st-attention": {
+        "role": "status",
+        "displayName": "Giallo (da controllare)",
+        "canonical": "#ffebb3",
+        "tonalRamp": [
+          "oklch(15% 0.075 90.719)",
+          "oklch(26% 0.075 90.719)",
+          "oklch(38% 0.075 90.719)",
+          "oklch(49% 0.075 90.719)",
+          "oklch(61% 0.075 90.719)",
+          "oklch(72% 0.075 90.719)",
+          "oklch(84% 0.075 90.719)",
+          "oklch(95% 0.022 90.719)"
+        ]
+      },
+      "st-attention-ink": {
+        "role": "status",
+        "displayName": "Inchiostro giallo",
+        "canonical": "#644400",
+        "tonalRamp": [
+          "oklch(15% 0.086 78.207)",
+          "oklch(26% 0.086 78.207)",
+          "oklch(38% 0.086 78.207)",
+          "oklch(49% 0.086 78.207)",
+          "oklch(61% 0.086 78.207)",
+          "oklch(72% 0.086 78.207)",
+          "oklch(84% 0.086 78.207)",
+          "oklch(95% 0.026 78.207)"
+        ]
+      },
+      "st-blocked": {
+        "role": "status",
+        "displayName": "Rosa (bloccato)",
+        "canonical": "#ffd9d6",
+        "tonalRamp": [
+          "oklch(15% 0.043 23.296)",
+          "oklch(26% 0.043 23.296)",
+          "oklch(38% 0.043 23.296)",
+          "oklch(49% 0.043 23.296)",
+          "oklch(61% 0.043 23.296)",
+          "oklch(72% 0.043 23.296)",
+          "oklch(84% 0.043 23.296)",
+          "oklch(95% 0.013 23.296)"
+        ]
+      },
+      "st-blocked-ink": {
+        "role": "status",
+        "displayName": "Inchiostro rosa",
+        "canonical": "#8a1c16",
+        "tonalRamp": [
+          "oklch(15% 0.146 28.539)",
+          "oklch(26% 0.146 28.539)",
+          "oklch(38% 0.146 28.539)",
+          "oklch(49% 0.146 28.539)",
+          "oklch(61% 0.146 28.539)",
+          "oklch(72% 0.146 28.539)",
+          "oklch(84% 0.146 28.539)",
+          "oklch(95% 0.044 28.539)"
+        ]
+      },
+      "ok": {
+        "role": "status",
+        "displayName": "Verde ok",
+        "canonical": "#127a3a",
+        "tonalRamp": [
+          "oklch(15% 0.133 150.244)",
+          "oklch(26% 0.133 150.244)",
+          "oklch(38% 0.133 150.244)",
+          "oklch(49% 0.133 150.244)",
+          "oklch(61% 0.133 150.244)",
+          "oklch(72% 0.133 150.244)",
+          "oklch(84% 0.133 150.244)",
+          "oklch(95% 0.04 150.244)"
+        ]
+      },
+      "warn": {
+        "role": "status",
+        "displayName": "Ambra avviso",
+        "canonical": "#8a5d00",
+        "tonalRamp": [
+          "oklch(15% 0.108 76.062)",
+          "oklch(26% 0.108 76.062)",
+          "oklch(38% 0.108 76.062)",
+          "oklch(49% 0.108 76.062)",
+          "oklch(61% 0.108 76.062)",
+          "oklch(72% 0.108 76.062)",
+          "oklch(84% 0.108 76.062)",
+          "oklch(95% 0.032 76.062)"
+        ]
+      },
+      "danger": {
+        "role": "status",
+        "displayName": "Rosso pericolo",
+        "canonical": "#b4231a",
+        "tonalRamp": [
+          "oklch(15% 0.182 29.074)",
+          "oklch(26% 0.182 29.074)",
+          "oklch(38% 0.182 29.074)",
+          "oklch(49% 0.182 29.074)",
+          "oklch(61% 0.182 29.074)",
+          "oklch(72% 0.182 29.074)",
+          "oklch(84% 0.182 29.074)",
+          "oklch(95% 0.055 29.074)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Titolo di pagina (Space Grotesk, impegno di brand noventra.it)."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Titoli di dialogo."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Titoli di sezione e blocco, date dell'agenda."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Testo corrente in IBM Plex Sans, già installato, scelto al posto di uno stack di sistema."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Pulsanti, intestazioni di tabella, navigazione."
+      },
+      "data": {
+        "displayName": "Data",
+        "purpose": "IBM Plex Mono tabellare per dati, orari, codici."
+      }
+    },
+    "shadows": [
+      {
+        "name": "shadow-1",
+        "value": "0 1px 2px rgb(10 22 56 / 0.05), 0 6px 16px -10px rgb(10 22 56 / 0.18)",
+        "purpose": "Contenitori: tabelle, agenda, caselle d'azione."
+      },
+      {
+        "name": "shadow-2",
+        "value": "0 2px 4px rgb(10 22 56 / 0.06), 0 18px 40px -20px rgb(10 22 56 / 0.35)",
+        "purpose": "Dialoghi e hover delle caselle d'azione."
+      },
+      {
+        "name": "button-primary",
+        "value": "0 1px 2px rgb(1 50 204 / 0.25)",
+        "purpose": "Pulsante primario a riposo."
+      },
+      {
+        "name": "button-primary-hover",
+        "value": "0 6px 16px -8px rgb(1 50 204 / 0.6)",
+        "purpose": "Pulsante primario al passaggio."
+      },
+      {
+        "name": "focus",
+        "value": "0 0 0 2px var(--surface), 0 0 0 4px var(--accent)",
+        "purpose": "Anello di focus nell'area chiara."
+      },
+      {
+        "name": "focus-rail",
+        "value": "0 0 0 2px var(--rail), 0 0 0 4px var(--signal)",
+        "purpose": "Anello di focus sulla barra cobalto."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease",
+        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "Easing unico per tutte le transizioni (120–240ms); ridotto a zero con prefers-reduced-motion."
+      },
+      {
+        "name": "duration-state",
+        "value": "160ms",
+        "purpose": "Hover e cambi di stato di pulsanti e voci."
+      },
+      {
+        "name": "duration-menu",
+        "value": "240ms",
+        "purpose": "Apertura del menu laterale su mobile."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "wide",
+        "value": "1100px"
+      },
+      {
+        "name": "rail",
+        "value": "960px"
+      },
+      {
+        "name": "section",
+        "value": "860px"
+      },
+      {
+        "name": "md",
+        "value": "720px"
+      },
+      {
+        "name": "stack",
+        "value": "640px"
+      },
+      {
+        "name": "sm",
+        "value": "520px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Pulsante primario",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Una sola azione principale per riga o blocco.",
+      "html": "<button class=\"ds-btn\">Invia email</button>",
+      "css": ".ds-btn{display:inline-flex;align-items:center;gap:8px;min-height:40px;padding:0 16px;border:1px solid #0132cc;border-radius:8px;background:#0132cc;color:#fff;font-family:'Space Grotesk',system-ui,sans-serif;font-weight:600;font-size:.8125rem;cursor:pointer;box-shadow:0 1px 2px rgb(1 50 204/.25);transition:background 160ms cubic-bezier(.16,1,.3,1),box-shadow 160ms cubic-bezier(.16,1,.3,1),transform 160ms}.ds-btn:hover{background:#0027a8;border-color:#0027a8;box-shadow:0 6px 16px -8px rgb(1 50 204/.6)}.ds-btn:active{transform:translateY(1px)}.ds-btn:focus-visible{outline:none;box-shadow:0 0 0 2px #fff,0 0 0 4px #0132cc}"
+    },
+    {
+      "name": "Pulsante secondario",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Azioni alternative, a filetto.",
+      "html": "<button class=\"ds-btn-sec\">Esporta</button>",
+      "css": ".ds-btn-sec{display:inline-flex;align-items:center;min-height:40px;padding:0 16px;border:1px solid #b7c3d4;border-radius:8px;background:#fff;color:#0a1638;font-family:'Space Grotesk',system-ui,sans-serif;font-weight:600;font-size:.8125rem;cursor:pointer;box-shadow:0 1px 2px rgb(10 22 56/.06);transition:border-color 160ms,color 160ms}.ds-btn-sec:hover{border-color:#0132cc;color:#0132cc}.ds-btn-sec:focus-visible{outline:none;box-shadow:0 0 0 2px #fff,0 0 0 4px #0132cc}"
+    },
+    {
+      "name": "Pulsante ghost",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Azioni di riga; disattivato diventa grigio incavato.",
+      "html": "<button class=\"ds-btn-ghost\">Apri</button> <button class=\"ds-btn-ghost\" disabled>Invia email</button>",
+      "css": ".ds-btn-ghost{min-height:40px;padding:0 12px;border:1px solid transparent;border-radius:8px;background:transparent;color:#39446a;font-family:'Space Grotesk',system-ui,sans-serif;font-weight:600;font-size:.8125rem;cursor:pointer}.ds-btn-ghost:hover:not(:disabled){background:#e7edf4;color:#0a1638}.ds-btn-ghost:focus-visible{outline:none;box-shadow:0 0 0 2px #fff,0 0 0 4px #0132cc}.ds-btn-ghost:disabled{border-color:#d6dee9;background:#e7edf4;color:#56607d;cursor:not-allowed}"
+    },
+    {
+      "name": "Campo",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Campo di testo a filetto con alone cobalto al focus.",
+      "html": "<input class=\"ds-input\" placeholder=\"Cerca azienda\">",
+      "css": ".ds-input{width:260px;min-height:42px;padding:0 12px;border:1px solid #b7c3d4;border-radius:8px;background:#fff;color:#0a1638;font-family:'IBM Plex Sans',system-ui,sans-serif;font-size:.9375rem;caret-color:#0132cc;transition:border-color 140ms,box-shadow 140ms}.ds-input::placeholder{color:#56607d}.ds-input:hover{border-color:#56607d}.ds-input:focus-visible{outline:none;border-color:#0132cc;box-shadow:0 0 0 3px #e4eaff}"
+    },
+    {
+      "name": "Stato",
+      "kind": "chip",
+      "refersTo": "status-positive",
+      "description": "Pastiglia pastello con pallino e testo dello stato.",
+      "html": "<span class=\"ds-st ds-st--ok\">Risposta</span> <span class=\"ds-st ds-st--fu\">Follow-up</span> <span class=\"ds-st ds-st--sent\">Inviata</span> <span class=\"ds-st ds-st--warn\">Da controllare</span> <span class=\"ds-st ds-st--bad\">Bloccato</span>",
+      "css": ".ds-st{display:inline-flex;align-items:center;gap:6px;padding:2px 10px 2px 8px;border-radius:999px;font-family:'IBM Plex Sans',system-ui,sans-serif;font-size:.75rem;font-weight:500;line-height:1.6}.ds-st::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor}.ds-st--ok{background:#c9f5d5;color:#0b5228}.ds-st--fu{background:#e3dbff;color:#43278c}.ds-st--sent{background:#d2f1ff;color:#04476a}.ds-st--warn{background:#ffebb3;color:#644400}.ds-st--bad{background:#ffd9d6;color:#8a1c16}"
+    },
+    {
+      "name": "Barra laterale",
+      "kind": "nav",
+      "refersTo": "nav-link-active",
+      "description": "Barra cobalto piena con voce attiva bianca e contatori ciano.",
+      "html": "<nav class=\"ds-rail\"><a class=\"ds-link\" aria-current=\"page\" href=\"#\"><span>Oggi</span></a><a class=\"ds-link\" href=\"#\"><span>Email commerciali</span><span class=\"ds-count\">4</span></a><a class=\"ds-link\" href=\"#\"><span>Trattative</span></a></nav>",
+      "css": ".ds-rail{display:grid;gap:2px;width:240px;padding:12px;background:#0132cc}.ds-link{display:flex;align-items:center;gap:12px;min-height:42px;padding:0 12px;border-radius:8px;color:rgb(255 255 255/.8);font-family:'Space Grotesk',system-ui,sans-serif;font-size:.9375rem;font-weight:500;text-decoration:none;transition:background 160ms,color 160ms}.ds-link>span:first-child{flex:1}.ds-link:hover{background:rgb(255 255 255/.1);color:#fff}.ds-link[aria-current=page]{background:#fff;color:#0132cc;font-weight:600}.ds-link:focus-visible{outline:none;box-shadow:0 0 0 2px #0132cc,0 0 0 4px #00ccff}.ds-count{min-width:22px;padding:0 6px;border-radius:999px;background:#00ccff;color:#0a1638;font-size:11px;font-weight:500;line-height:20px;text-align:center}"
+    },
+    {
+      "name": "Agenda della settimana",
+      "kind": "custom",
+      "refersTo": "week-event-followup",
+      "description": "Griglia a filetto di 7 giorni con eventi pastello per stato; oggi cerchiato in cobalto.",
+      "html": "<ol class=\"ds-week\"><li class=\"ds-day\"><b>lun <i>20</i></b></li><li class=\"ds-day\"><b>mar <i>21</i></b><a class=\"ds-ev ds-ev--fu\" href=\"#\">Follow-up<br><small>Rossi Srl</small></a></li><li class=\"ds-day ds-day--today\"><b>mer <i>22</i></b><a class=\"ds-ev ds-ev--ok\" href=\"#\">Risposta<br><small>Bianchi Spa</small></a></li></ol>",
+      "css": ".ds-week{display:grid;grid-template-columns:repeat(3,140px);gap:1px;margin:0;padding:0;list-style:none;overflow:hidden;border:1px solid #d6dee9;border-radius:14px;background:#d6dee9;box-shadow:0 1px 2px rgb(10 22 56/.05),0 6px 16px -10px rgb(10 22 56/.18)}.ds-day{display:grid;align-content:start;gap:8px;min-height:140px;padding:12px;background:#fff;font-family:'Space Grotesk',system-ui,sans-serif}.ds-day b{display:flex;justify-content:space-between;align-items:baseline;font-size:.75rem;font-weight:500;color:#56607d}.ds-day i{font-style:normal;font-size:1.125rem;font-weight:600;color:#0a1638;min-width:30px;height:30px;display:grid;place-items:center;border-radius:999px}.ds-day--today i{background:#0132cc;color:#fff}.ds-ev{display:block;padding:6px 8px;border-radius:6px;font-family:'IBM Plex Sans',system-ui,sans-serif;font-size:.75rem;font-weight:600;line-height:1.3;text-decoration:none;transition:transform 160ms}.ds-ev small{font-weight:400;opacity:.85}.ds-ev:hover{transform:translateX(2px)}.ds-ev:focus-visible{outline:none;box-shadow:0 0 0 2px #fff,0 0 0 4px #0132cc}.ds-ev--fu{background:#e3dbff;color:#43278c}.ds-ev--ok{background:#c9f5d5;color:#0b5228}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Agenda commerciale",
+    "overview": "Il lavoro commerciale si legge come un'agenda da tavolo: ogni azienda, email e trattativa è una casella con uno stato colorato riconoscibile a colpo d'occhio. Una barra laterale cobalto Noventra piena regge l'app; il resto è carta chiara e fredda, superfici bianche, inchiostro blu notte e griglie a filetto sottile come un calendario. Densità da strumento d'ufficio: molte righe, poca decorazione, un'azione evidente per riga.\n\nIl riferimento è throxy.com (scelto dall'utente da siteinspire) fuso con l'identità di noventra.it. Il concept-seed roll non è stato eseguito: il riferimento è stato fissato dall'utente, che ha approvato la direzione. Rifiutato in modo esplicito: il gestionale grigio a paragrafi con sopratitoli e numeri di sezione.",
+    "keyCharacteristics": [
+      "Barra laterale cobalto piena, voci bianche, contatori ciano.",
+      "Stati come riquadri pastello pieni, sempre accompagnati dal testo dello stato.",
+      "Griglie a filetto da 1px su superficie bianca (agenda settimanale, tabelle).",
+      "Primario cobalto pieno, secondario a filetto, ghost per azioni di riga.",
+      "Titoli Space Grotesk, testo IBM Plex Sans, dati IBM Plex Mono tabellari."
+    ],
+    "rules": [
+      {
+        "name": "The Colore-più-Testo Rule",
+        "body": "Uno stato non è mai solo colore: pastiglia, casella o riquadro portano sempre la parola dello stato.",
+        "section": "colors"
+      },
+      {
+        "name": "The Ciano-sul-Cobalto Rule",
+        "body": "Il ciano vive sulla barra cobalto; nell'area chiara non compare come testo o fondo.",
+        "section": "colors"
+      },
+      {
+        "name": "The Cifre-Allineate Rule",
+        "body": "Tabelle, `.mono` e conteggi usano cifre tabellari.",
+        "section": "typography"
+      },
+      {
+        "name": "The Filetto-Prima Rule",
+        "body": "La separazione si fa con il filetto da 1px; l'ombra segnala solo un contenitore o una risposta all'hover.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** usare il cobalto pieno per una sola azione primaria per riga o blocco.",
+      "**Do** accompagnare ogni colore di stato con il testo dello stato.",
+      "**Do** separare con filetti da 1px (rule) prima di ricorrere alle ombre.",
+      "**Do** usare IBM Plex Mono con cifre tabellari per dati, orari e codici.",
+      "**Do** mantenere ink-3 come colore minimo per testo secondario (≥ 4.5:1)."
+    ],
+    "donts": [
+      "**Don't** costruire pagine da gestionale grigio a paragrafi con sopratitoli e numeri di sezione.",
+      "**Don't** usare il ciano come testo o fondo nell'area chiara.",
+      "**Don't** mostrare un pulsante disattivato in blu sbiadito.",
+      "**Don't** caricare font o risorse da domini esterni (CSP).",
+      "**Don't** usare icone glifo o da pacchetti esterni: solo gli SVG del progetto."
+    ],
+    "openItems": [
+      "I contatori della barra compaiono solo su «Email commerciali»; manca il conteggio su «Trattative».",
+      "I pulsanti ghost disattivati «Invia email» ripetuti sulle righe senza email restano: li richiedono i test e2e e la documentazione."
+    ]
+  }
+}

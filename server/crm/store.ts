@@ -889,7 +889,7 @@ export async function updateActivity(
     );
     const a = rows[0];
     if (!a) throw new JobError(404, 'NOT_FOUND', 'Attività non trovata.');
-    if (a.type === 'stage_change' || a.type === 'email_sent')
+    if (a.type === 'stage_change' || a.type === 'email_sent' || a.type === 'email_reply')
       throw new JobError(
         409,
         'NOT_EDITABLE',

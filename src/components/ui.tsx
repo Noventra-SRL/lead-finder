@@ -187,7 +187,8 @@ export function Pagination({
   onPage: (page: number) => void;
 }) {
   const pages = Math.max(1, Math.ceil(total / pageSize));
-  if (total === 0) return null;
+  // una sola pagina: niente controlli da mostrare
+  if (total === 0 || pages === 1) return null;
   const from = (page - 1) * pageSize + 1;
   const to = Math.min(total, page * pageSize);
   return (
@@ -223,7 +224,7 @@ export function Notice({
   children?: ReactNode;
 }) {
   return (
-    <div className={`notice${tone !== 'info' ? ` notice--${tone}` : ''}`} role={tone === 'error' ? 'alert' : 'status'}>
+    <div className={`notice notice--${tone}`} role={tone === 'error' ? 'alert' : 'status'}>
       <div>
         {title && <p className="notice__title">{title}</p>}
         {children && <div>{children}</div>}
@@ -271,10 +272,10 @@ export function Status({ tone, children }: { tone: 'ok' | 'warn' | 'danger' | 'i
   return <span className={`status status--${tone}`}>{children}</span>;
 }
 
-export function PageHeader({ index, title, lede }: { index?: string; title: string; lede?: ReactNode }) {
+/** Intestazione di pagina: titolo e una riga di contesto (`index` resta accettato ma non si mostra più). */
+export function PageHeader({ title, lede }: { index?: string; title: string; lede?: ReactNode }) {
   return (
     <header className="page-head">
-      {index && <span className="page-head__index">{index}</span>}
       <h1 className="page-head__title">{title}</h1>
       {lede && <p className="page-head__lede">{lede}</p>}
     </header>

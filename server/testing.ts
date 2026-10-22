@@ -1,6 +1,8 @@
 import type { Server as NetServer } from 'node:net';
 import { createAiServices } from './ai/services.ts';
 import { createEmailServices, type EmailSender } from './email/sender.ts';
+import type { DnsResolver } from './email/deliverability.ts';
+import type { InboxReader } from './email/replies.ts';
 import type { AiProvider } from './ai/provider.ts';
 import type { AiConfig, EmailConfig } from './config.ts';
 import { randomBytes } from 'node:crypto';
@@ -96,7 +98,12 @@ export async function startTestServer(
     /** Fornitore AI di prova (predefinito: nessuno, AI non configurata). */
     ai?: { provider?: AiProvider | null; config?: Partial<AiConfig>; workerActive?: boolean };
     /** Invio email di prova (predefinito: non configurato). */
-    email?: { sender?: EmailSender | null; config?: Partial<EmailConfig> };
+    email?: {
+      sender?: EmailSender | null;
+      config?: Partial<EmailConfig>;
+      dns?: DnsResolver;
+      inbox?: InboxReader | null;
+    };
   } = {},
 ): Promise<TestServer> {
   const limiter = options.limiter ?? new RateLimiter();
@@ -148,7 +155,11 @@ export async function startTestServer(
       }),
       email: createEmailServices(
         { ...testEmailConfig, ...options.email?.config },
-        { sender: options.email?.sender ?? null },
+        {
+          sender: options.email?.sender ?? null,
+          dns: options.email?.dns ?? offlineResolver,
+          inbox: options.email?.inbox ?? null,
+        },
       ),
     },
   });
@@ -207,6 +218,13 @@ export function client(baseUrl: string) {
   };
 }
 
+/** DNS dei test: nessuna rete, ogni nome risulta inesistente (dominio del mittente non pronto). */
+export const offlineResolver: DnsResolver = {
+  resolveMx: () => Promise.reject(Object.assign(new Error('nessuna rete nei test'), { code: 'ENOTFOUND' })),
+  resolveTxt: () => Promise.reject(Object.assign(new Error('nessuna rete nei test'), { code: 'ENOTFOUND' })),
+  resolve4: () => Promise.reject(Object.assign(new Error('nessuna rete nei test'), { code: 'ENOTFOUND' })),
+};
+
 /** Invio email dei test: nessun server SMTP; i test passano un FakeEmailSender e la configurazione completa. */
 export const testEmailConfig: EmailConfig = {
   smtp: null,
@@ -214,8 +232,12 @@ export const testEmailConfig: EmailConfig = {
   fromName: 'Noventra',
   replyTo: null,
   senderAuthorized: false,
+  dkimSelectors: null,
   timeoutMs: 5000,
   missing: ['SMTP_HOST', 'EMAIL_SENDER_AUTHORIZED=si'],
+  imap: null,
+  repliesWorker: false,
+  repliesPollMs: 600_000,
 };
 
 /** Configurazione AI dei test: nessuna chiave, prezzi noti per verificare la stima dei costi. */
