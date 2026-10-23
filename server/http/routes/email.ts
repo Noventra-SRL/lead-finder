@@ -26,10 +26,12 @@ import {
   STANDARD_BODY,
   TEMPLATE_ID,
   TEMPLATE_NAME,
+  EMAIL_TEMPLATES,
+  TEMPLATE_IDS,
   TONE_IDS,
   TONES,
 } from '../../email/template.ts';
-import { created, limit, ok, parseBody, parseQuery, sessionOf, type Context, type Route } from '../core.ts';
+import { created, HttpError, limit, ok, parseBody, parseQuery, sessionOf, type Context, type Route } from '../core.ts';
 
 /*
  * Email commerciali (Fase 9). Tutte le rotte richiedono una sessione. Nessuna rotta invia un'email tranne
@@ -76,6 +78,15 @@ export const emailRoutes: Route[] = [
           body: STANDARD_BODY,
           contacts: NOVENTRA,
         },
+        // modelli ufficiali (testo approvato, versione, categorie per cui sono predefiniti)
+        templates: Object.values(EMAIL_TEMPLATES).map((t) => ({
+          id: t.id,
+          name: t.name,
+          version: t.version,
+          subject: t.subject,
+          body: t.body,
+          defaultFor: t.defaultFor,
+        })),
         modes: MODES,
         objectives: OBJECTIVES.map((o) => ({ id: o.id, label: o.label })),
         tones: TONES,
@@ -102,6 +113,35 @@ export const emailRoutes: Route[] = [
       const session = writes(ctx);
       const result = await ctx.state.email.verify();
       await audit(ctx.db, { userId: session.user.id, action: 'email.verified', details: { ok: result.ok } });
+      return ok({ ...result, status: ctx.state.email.status() });
+    },
+  },
+  {
+    // «Invia email di prova»: solo amministratori, solo all'indirizzo scritto e confermato; mai nel CRM
+    method: 'POST',
+    pattern: /^\/api\/email\/test$/,
+    access: 'admin',
+    async handle(ctx) {
+      const session = writes(ctx);
+      const body = parseBody(
+        z
+          .object({
+            to: z.email('Indirizzo email non valido.').max(254),
+            confirm: z.literal(true, { error: 'Conferma l’invio del messaggio di prova.' }),
+          })
+          .strict(),
+        ctx.body,
+      );
+      limit(ctx, `email-test:${session.user.id}`, RULES.emailSendsByUser);
+      const status = ctx.state.email.status();
+      if (!ctx.state.email.sender || !status.from)
+        throw new HttpError(503, 'EMAIL_NOT_CONFIGURED', `Configurazione mancante: ${status.explanation}`);
+      const result = await ctx.state.email.sendTest(body.to.trim().toLowerCase());
+      await audit(ctx.db, {
+        userId: session.user.id,
+        action: 'email.test_sent',
+        details: { ok: result.ok, kind: result.kind },
+      });
       return ok({ ...result, status: ctx.state.email.status() });
     },
   },
@@ -222,6 +262,7 @@ export const emailRoutes: Route[] = [
             serviceId: serviceId.nullable().optional(),
             instructions: instructions.nullable().optional(),
             overwrite: z.boolean().default(false),
+            templateId: z.enum(TEMPLATE_IDS, { error: 'Modello sconosciuto.' }).optional(),
           })
           .strict(),
         ctx.body,

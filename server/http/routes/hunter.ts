@@ -1,10 +1,11 @@
 import { z } from 'zod';
+import { BUSINESS_CATEGORY_IDS } from '../../categories/catalog.ts';
 import { resumeAuditJob } from '../../audit/jobs.ts';
 import { RULES } from '../../auth/rateLimit.ts';
 import { JobError } from '../../discovery/jobs.ts';
 import { SECTOR_GROUPS, SECTOR_IDS } from '../../discovery/sectors.ts';
 import { controlHuntRun, createHuntRun, getHuntRun, listHuntRuns, sectorCatalog } from '../../hunter/runs.ts';
-import { created, limit, ok, parseBody, parseQuery, sessionOf, type Route } from '../core.ts';
+import { created, limit, ok, parseBody, parseQuery, sessionOf, type Context, type Route } from '../core.ts';
 
 /*
  * Lead Hunter (Fase 6). Tutte le rotte richiedono una sessione.
@@ -28,20 +29,41 @@ const runSchema = z
       .strict(),
     sectors: z
       .array(z.string())
-      .min(1, 'Scegli almeno un settore.')
       .max(SECTOR_IDS.length)
-      .refine((v) => v.every((x) => SECTOR_IDS.includes(x)), 'Settore non presente nel catalogo.'),
+      .refine((v) => v.every((x) => SECTOR_IDS.includes(x)), 'Settore non presente nel catalogo.')
+      .default([]),
+    // ricerca per categoria di «Trova aziende»: i settori vengono dalla categoria (non si indicano)
+    category: z.enum(BUSINESS_CATEGORY_IDS, { error: 'Categoria sconosciuta.' }).nullable().default(null),
+    // fonte della ricerca: OpenStreetMap (predefinita) o Google Maps (Places API)
+    provider: z.enum(['osm', 'google'], { error: 'Fonte sconosciuta.' }).default('osm'),
     options: z
       .object({
         minScore: z.number().int().min(0).max(100).nullable().default(null),
         websitePreference: z.enum(['any', 'no_website', 'website_issues']).default('any'),
         excludeKnown: z.boolean().default(false),
         audit: z.boolean().default(true),
+        // obiettivo = aziende con un'email pubblica (dalla fonte o dal sito): servono le verifiche dei siti
+        publicEmail: z.boolean().default(false),
       })
       .strict()
-      .default({ minScore: null, websitePreference: 'any', excludeKnown: false, audit: true }),
+      .default({ minScore: null, websitePreference: 'any', excludeKnown: false, audit: true, publicEmail: false }),
   })
-  .strict();
+  .strict()
+  .refine((b) => !b.options.publicEmail || b.options.audit, {
+    message: 'Per trovare le email pubblicate sui siti serve la verifica automatica dei siti.',
+    path: ['options', 'audit'],
+  })
+  .refine((b) => !b.options.publicEmail || b.options.websitePreference !== 'no_website', {
+    message: 'Le aziende senza sito hanno raramente un’email pubblica: scegli «tutte» o «con problemi del sito».',
+    path: ['options', 'websitePreference'],
+  })
+  .refine((b) => b.category !== null || b.sectors.length > 0, {
+    message: 'Scegli almeno un settore.',
+    path: ['sectors'],
+  });
+
+/** Fonti della ricerca di lead: OpenStreetMap e le fonti aggiuntive (es. Google Places). */
+const providersOf = (ctx: Context) => [ctx.state.discovery.provider, ...(ctx.state.discovery.extraProviders ?? [])];
 
 export const hunterRoutes: Route[] = [
   {
@@ -54,13 +76,18 @@ export const hunterRoutes: Route[] = [
         defaults: {
           target: 1000,
           area: { type: 'italy', code: 'IT' },
-          options: { minScore: null, websitePreference: 'any', excludeKnown: false, audit: true },
+          options: { minScore: null, websitePreference: 'any', excludeKnown: false, audit: true, publicEmail: false },
         },
         limits: { maxTarget: 10_000 },
         provider: {
           configured: ctx.state.discovery.provider.info().configured,
           label: ctx.state.discovery.provider.info().label,
         },
+        // fonti disponibili per la ricerca: stato della configurazione, mai le chiavi
+        providers: providersOf(ctx).map((p) => {
+          const i = p.info();
+          return { id: i.id, label: i.label, configured: i.configured, setupHint: i.setupHint ?? null };
+        }),
         workerActive: ctx.state.hunter.workerActive,
       });
     },
@@ -74,7 +101,10 @@ export const hunterRoutes: Route[] = [
       limit(ctx, `hunt:${session.user.id}`, RULES.huntsByUser);
       const id = await createHuntRun(ctx.db, body, {
         userId: session.user.id,
-        providerConfigured: ctx.state.discovery.provider.info().configured,
+        providerConfigured:
+          providersOf(ctx)
+            .find((p) => p.info().id === body.provider)
+            ?.info().configured ?? false,
       });
       ctx.state.hunter.wake();
       return created(await getHuntRun(ctx.db, id));

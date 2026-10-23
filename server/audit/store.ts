@@ -1,3 +1,4 @@
+import { recordWebsiteEmails } from '../enrichment/store.ts';
 import type { Queryable } from '../db/client.ts';
 import { JobError } from '../discovery/jobs.ts';
 import { storableMeasurements } from './html.ts';
@@ -176,6 +177,15 @@ export async function saveAudit(
       WHERE id = $1`,
     [input.websiteId, o.websiteStatus, s.statusReason, o.finalUrl, auditId, o.finishedAt],
   );
+  // email scritte nelle pagine lette (solo se almeno una pagina è stata letta: altrimenti il sito resta da controllare)
+  if (o.emailPagesChecked > 0)
+    await recordWebsiteEmails(tx, {
+      websiteId: input.websiteId,
+      auditId,
+      emails: o.emails,
+      pagesChecked: o.emailPagesChecked,
+      checkedAt: o.finishedAt,
+    });
   return auditId;
 }
 

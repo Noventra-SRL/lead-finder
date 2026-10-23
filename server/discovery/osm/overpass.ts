@@ -9,6 +9,7 @@ import {
   type ProviderInfo,
   type RetryInfo,
   type UnitResult,
+  type FetchOptions,
 } from '../types.ts';
 import { OSM_PROVIDER, parseOverpassResponse } from './normalize.ts';
 import { buildUnitQuery } from './query.ts';
@@ -144,7 +145,7 @@ export class OverpassProvider implements DiscoveryProvider {
     limitPerArea: number,
     signal: AbortSignal,
     onRetry?: (info: RetryInfo) => void,
-    options: { sectors?: string[] } = {},
+    options: FetchOptions = {},
   ): Promise<UnitResult> {
     if (!this.config.endpoint) throw new ProviderError('not_configured', OVERPASS_SETUP_HINT);
     const sectors = options.sectors?.length ? sectorsInOrder(options.sectors) : undefined;
@@ -154,6 +155,7 @@ export class OverpassProvider implements DiscoveryProvider {
       limitPerArea,
       { timeoutSeconds: this.config.timeoutSeconds, maxsizeBytes: this.config.maxsizeBytes },
       sectors,
+      { requireContact: options.requireContact ?? false },
     );
     // il formato dei record in cache cambia con i campi normalizzati (Fase 6: settore e recapiti): mai riusare il vecchio
     const key = `${OSM_PROVIDER}:${createHash('sha256')

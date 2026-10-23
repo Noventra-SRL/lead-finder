@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router';
 import { ApiError, post, type SessionInfo, type SystemStatus, type UserSummary } from '../api/client.ts';
 import { useUser } from '../auth/AuthContext.tsx';
+import { EmailSettings } from '../components/EmailSettings.tsx';
 import { PasswordForm } from '../components/PasswordForm.tsx';
 import { ScoringSettings } from '../components/ScoringSettings.tsx';
 import {
@@ -192,6 +193,14 @@ export function SettingsPage() {
       >
         <ScoringSettings admin={user.role === 'admin'} />
       </Section>
+      {user.role === 'admin' && (
+        <Section
+          title="Invio email"
+          description="Server di posta per le email commerciali (Google Workspace). Le credenziali restano sul server."
+        >
+          <EmailSettings />
+        </Section>
+      )}
       {user.role === 'admin' && (
         <Section
           title="Utenti"

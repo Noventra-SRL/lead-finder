@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { expectAccessible, signInAsAdmin, trackErrors, expectHome, openAdvanced } from './helpers.ts';
+import { expectAccessible, signInAsAdmin, trackErrors, expectHome, openAdvanced, openSections } from './helpers.ts';
 import { E2E_USERS } from './users.ts';
 
 /*
@@ -50,6 +50,7 @@ test('scheda: valutazione singola con componenti, prove, calcolo del server e re
   await signIn(page);
   await page.goto('/aziende?q=hotel%20di%20prova%20albano');
   await page.getByRole('link', { name: HOTEL, exact: true }).click();
+  await openSections(page);
   const panel = page.getByRole('region', { name: 'Valutazione commerciale AI' });
   await expect(panel.getByText('Nessuna valutazione AI per questa azienda.')).toBeVisible();
   await panel.getByRole('button', { name: 'Valuta con AI' }).click();
@@ -111,6 +112,7 @@ test.describe('mobile @mobile', () => {
     await signIn(page);
     await page.goto('/aziende?q=hotel%20di%20prova%20albano');
     await page.getByRole('link', { name: HOTEL, exact: true }).click();
+    await openSections(page);
     await expect(page.getByRole('region', { name: 'Valutazione commerciale AI' })).toBeVisible();
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,

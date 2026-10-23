@@ -16,6 +16,7 @@ import { FetchError, safeFetch, type FetchPolicy, type FetchResult } from './net
 import type { PerformanceOutcome, PerformanceProvider, Strategy } from './performance/pagespeed.ts';
 import { isAllowed, parseRobots, robotsMissing, robotsUnavailable, type Robots } from './robots.ts';
 import { detectSignals } from './signals.ts';
+import { extractEmails, type FoundEmail } from '../enrichment/emails.ts';
 import { bareHost, sameSite } from './url.ts';
 
 /*
@@ -32,7 +33,8 @@ import { bareHost, sameSite } from './url.ts';
  * un 429 o 503 ferma le richieste successive al sito.
  */
 
-export const AUDIT_VERSION = 1;
+// 2: le pagine lette vengono controllate anche per le email pubblicate (server/enrichment)
+export const AUDIT_VERSION = 2;
 
 export interface AuditSettings {
   maxPages: number;
@@ -60,6 +62,10 @@ export interface AuditOutcome {
   performance: PerformanceOutcome[];
   limitations: string[];
   summary: ReturnType<typeof summarize>;
+  /** Email scritte nelle pagine lette (stesso sito), con la pagina di provenienza. */
+  emails: FoundEmail[];
+  /** Pagine HTML lette e controllate per le email. */
+  emailPagesChecked: number;
   startedAt: Date;
   finishedAt: Date;
 }
@@ -118,6 +124,8 @@ const PRIORITY: [RegExp, number][] = [
   [/contatt|contact|dove[-_ ]siamo|come[-_ ]raggiungerci/, 10],
   [/servizi|services|prodotti|products|catalogo|shop|negozio/, 8],
   [/men[uù]|camere|rooms|prenot|booking|orari|corsi/, 8],
+  // note legali e dati societari: spesso riportano l'indirizzo email ufficiale
+  [/note[-_ ]legali|legal|impressum|dati[-_ ]societari|informazioni[-_ ]legali/, 6],
   [/chi[-_ ]siamo|about|azienda|la[-_ ]farmacia|storia/, 4],
 ];
 
@@ -490,6 +498,13 @@ export async function runAudit(
     limitations,
   };
   const findings = evaluate(ctx);
+  // email scritte nelle pagine lette: nessuna pagina in più, nessun indirizzo dedotto (server/enrichment/emails.ts)
+  const emails = new Map<string, FoundEmail>();
+  for (const p of inspected) {
+    const host = new URL(p.finalUrl).hostname;
+    for (const e of extractEmails(p.html!, p.finalUrl, home ? new URL(home.finalUrl).hostname : host))
+      if (!emails.has(e.email)) emails.set(e.email, e);
+  }
   const partial =
     rateLimited ||
     pages.some((p) => p.truncated) ||
@@ -511,6 +526,8 @@ export async function runAudit(
     performance,
     limitations,
     summary: summarize(ctx, findings),
+    emails: [...emails.values()],
+    emailPagesChecked: inspected.length,
     startedAt,
     finishedAt: new Date(),
   };

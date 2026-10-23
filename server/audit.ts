@@ -17,6 +17,7 @@ export type AuditAction =
   | 'user.enabled'
   | 'user.role_changed'
   | 'business.created'
+  | 'business.edited'
   | 'business.updated'
   | 'business.source_linked'
   | 'business.merged'
@@ -39,6 +40,11 @@ export type AuditAction =
   | 'hunt.resumed'
   | 'hunt.cancelled'
   | 'business.excluded'
+  | 'business.category_set'
+  | 'business.category_automatic'
+  | 'business.email_found'
+  | 'business.email_confirmed'
+  | 'business.do_not_contact_revoked'
   | 'business.included'
   | 'leads.exported'
   | 'crm.opportunity_created'
@@ -55,7 +61,8 @@ export type AuditAction =
   | 'email.generated'
   | 'email.sent'
   | 'email.send_failed'
-  | 'email.verified';
+  | 'email.verified'
+  | 'email.test_sent';
 
 export async function audit(
   db: Queryable,

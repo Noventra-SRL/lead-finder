@@ -597,6 +597,12 @@ beforeAll(async () => {
       if (fakeMode === 'overloaded')
         return send(529, { type: 'error', error: { type: 'overloaded_error', message: 'Overloaded' } });
       if (fakeMode === 'slow') return setTimeout(() => send(500, {}), 3000);
+      // verifica della chiave: informazioni del modello (GET /v1/models/:id), nessuna generazione
+      const model = /^\/v1\/models\/([^/?]+)/.exec(req.url ?? '');
+      if (req.method === 'GET' && model)
+        return model[1] === 'modello-inesistente'
+          ? send(404, { type: 'error', error: { type: 'not_found_error', message: 'model not found' } })
+          : send(200, { type: 'model', id: model[1], display_name: 'Prova', created_at: '2026-01-01T00:00:00Z' });
       const user = (body.messages as { content: string }[])[0]!.content;
       send(200, {
         id: 'msg_prova',
@@ -621,6 +627,24 @@ describe('fornitore Anthropic (SDK reale, server finto)', () => {
     new AnthropicProvider(cfg({ provider: 'anthropic', apiKey: KEY, model: 'claude-opus-5-5', ...over }), {
       baseURL: fakeUrl,
     });
+
+  it('verifica della chiave senza generare testo: valida, rifiutata, modello inesistente', async () => {
+    fakeMode = 'ok';
+    expect(await real().verify()).toEqual({ model: 'claude-opus-5-5' });
+    expect(lastRequest?.headers.authorization).toBe(`Bearer ${KEY}`);
+    expect(lastRequest?.body).toEqual({});
+    await expect(real({ model: 'modello-inesistente' }).verify()).rejects.toMatchObject({
+      code: 'bad_request',
+      message: expect.stringMatching(/controlla AI_MODEL/),
+    });
+    fakeMode = 'unauthorized';
+    const err = await real()
+      .verify()
+      .catch((e: unknown) => e as Error);
+    expect(err).toMatchObject({ code: 'auth', message: expect.stringMatching(/controlla AI_API_KEY/) });
+    expect(String(err)).not.toContain(KEY);
+    fakeMode = 'ok';
+  });
 
   it('risposta strutturata analizzata, fallback lato server richiesto, token e costo registrati', async () => {
     fakeMode = 'ok';

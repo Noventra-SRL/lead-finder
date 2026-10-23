@@ -1,4 +1,5 @@
 import { rmSync } from 'node:fs';
+import { FAKE_GOOGLE_KEY, startFakePlaces } from '../server/discovery/google/fakePlaces.ts';
 import { goodPharmacyHome, poorRestaurantHome, startFakeSite } from '../server/audit/fakeSite.ts';
 import { hashPassword } from '../server/auth/passwords.ts';
 import { createUser } from '../server/auth/users.ts';
@@ -13,6 +14,8 @@ import {
   E2E_FAKE_AI_PORT,
   E2E_FAKE_OVERPASS_PORT,
   E2E_FAKE_SMTP_PORT,
+  E2E_FAKE_PLACES_PORT,
+  E2E_SITE_EMAIL,
   E2E_FAKE_SITE_PORTS,
   E2E_USERS,
 } from './users.ts';
@@ -92,6 +95,12 @@ await startFakeSite(
   {
     '/': { body: goodPharmacyHome() },
     '/robots.txt': { headers: { 'Content-Type': 'text/plain' }, body: 'User-agent: *\nAllow: /\n' },
+    // pagina dei contatti con le email pubblicate (arricchimento): una casella dell'attività e l'agenzia del sito
+    '/contatti': {
+      body: `<!doctype html><html lang="it"><head><title>Contatti — Farmacia di Prova</title></head><body>
+        <h1>Contatti</h1><p>Scrivici a <a href="mailto:${E2E_SITE_EMAIL}">${E2E_SITE_EMAIL}</a></p>
+        <footer>Sito realizzato da info@agenzia-web-prova.example.it</footer></body></html>`,
+    },
   },
   good,
 );
@@ -118,6 +127,11 @@ process.env.AI_MODEL = 'claude-opus-5-5';
 process.env.AI_AUTO_ASSESS = 'off';
 // email commerciali: client SMTP reale (nodemailer) verso un server SMTP finto locale; nessuna email esce
 await startFakeSmtp(E2E_FAKE_SMTP_PORT);
+// Google Maps: Places API (New) verso un server finto locale; i luoghi finti non hanno sito (nessuna richiesta esterna)
+const places = await startFakePlaces(E2E_FAKE_PLACES_PORT);
+places.control.websiteFor = () => null;
+process.env.GOOGLE_PLACES_API_KEY = FAKE_GOOGLE_KEY;
+process.env.GOOGLE_PLACES_TEST_BASE_URL = places.url;
 process.env.SMTP_HOST = '127.0.0.1';
 process.env.SMTP_PORT = String(E2E_FAKE_SMTP_PORT);
 process.env.SMTP_SECURITY = 'none';

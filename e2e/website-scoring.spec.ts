@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { expectAccessible, signInAsAdmin, trackErrors, expectHome } from './helpers.ts';
+import { expectAccessible, signInAsAdmin, trackErrors, expectHome, openSections } from './helpers.ts';
 import { E2E_AUDIT_BUSINESSES, E2E_USERS } from './users.ts';
 
 /*
@@ -15,6 +15,7 @@ async function openLead(page: Page, name: string) {
   await page.goto(`/aziende?q=${encodeURIComponent(name)}`);
   await page.getByRole('link', { name }).click();
   await expect(page.getByRole('heading', { level: 1, name })).toBeVisible();
+  await openSections(page);
 }
 
 test('elenco dei lead: punteggio, fascia, affidabilità e prossimo passo calcolati dopo gli audit', async ({ page }) => {
@@ -76,6 +77,7 @@ test('scheda: spiegazione, dimensioni, fatti distinti dalle deduzioni, prove col
   await panel.getByRole('link', { name: 'apri l’audit' }).first().click();
   await expect(page.getByRole('region', { name: 'Rilievi' })).toBeVisible();
   await page.goBack();
+  await openSections(page);
   await panel.getByRole('button', { name: 'Ricalcola il punteggio' }).click();
   await expect(panel.getByRole('list', { name: 'Storico dei punteggi' }).getByRole('listitem')).toHaveCount(2);
   expect(errors).toEqual([]);
@@ -89,6 +91,7 @@ test('azienda senza sito indicato: nessun punteggio, assenza del sito dichiarata
   await expectHome(page);
   await page.goto('/aziende?website=no&q=di%20prova');
   await page.getByRole('table').getByRole('row').nth(1).getByRole('link').first().click();
+  await openSections(page);
   const panel = page.getByRole('region', { name: 'Punteggio del lead' });
   // calcolato dopo la ricerca, oppure calcolabile qui: in entrambi i casi mai un numero
   if (await panel.getByRole('button', { name: 'Calcola il punteggio' }).isVisible())

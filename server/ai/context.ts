@@ -222,7 +222,8 @@ export async function buildContext(db: Queryable, businessId: string): Promise<A
   const open = opps.find((o) => !o.closed_at);
   const won = opps.some((o) => o.stage === 'vinto');
   const lost = opps.find((o) => o.stage === 'perso' && o.closed_at);
-  const doNotContact = Boolean(row.excluded_at) || opps.some((o) => o.stage === 'non_contattare');
+  const doNotContact =
+    Boolean(row.excluded_at) || Boolean(row.do_not_contact_at) || opps.some((o) => o.stage === 'non_contattare');
   if (opps.length === 0) add('R1', 'crm', 'Nessuna opportunità commerciale registrata: potenziale nuovo cliente.');
   else
     opps.forEach((o, i) =>

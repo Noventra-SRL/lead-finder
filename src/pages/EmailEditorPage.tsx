@@ -31,6 +31,7 @@ import {
   Status,
   TextAreaField,
 } from '../components/ui.tsx';
+import { EmailRationale } from '../components/EmailRationale.tsx';
 import { formatDateTime } from '../lib/format.ts';
 import { useApi } from '../lib/useApi.ts';
 import { SendingStatusBar, STATUS_TONE } from './EmailListPage.tsx';
@@ -97,7 +98,7 @@ function NewEmail() {
       </p>
       <PageHeader
         title="Nuova email"
-        lede="Scegli l’azienda: la bozza parte dal Modello commerciale standard Noventra. Potrai personalizzarla con l’AI, modificarla e salvarla prima di decidere se inviarla."
+        lede="Scegli l’azienda: la bozza parte dal modello ufficiale della sua categoria (Farmacube per le farmacie, il Modello commerciale standard Noventra per le altre attività). Potrai personalizzarla con l’AI, modificarla e salvarla prima di decidere se inviarla."
       />
       <Section title="Azienda" description="Cerca tra le aziende del database.">
         <div className="stack">
@@ -161,7 +162,7 @@ function NewEmail() {
           {error && <p className="field__error">{error.message}</p>}
           <div>
             <Button busy={busy} disabled={!selected} onClick={() => void create()}>
-              Crea la bozza dal modello standard
+              Crea la bozza dal modello ufficiale
             </Button>
           </div>
         </div>
@@ -325,6 +326,7 @@ function Evidence({ d }: { d: EmailDetail }) {
       description="Servono a te per controllare il testo: non compaiono nell’email."
     >
       <div className="stack stack--tight">
+        <EmailRationale email={e} catalog={d.catalog} />
         {e.mode === 'ai' && e.evidence.length > 0 ? (
           <>
             <h3 className="sub-title">Prove usate dalla personalizzazione</h3>
@@ -420,6 +422,7 @@ function Editor({ d, meta, onChange }: { d: EmailDetail; meta: EmailMeta; onChan
   const [tone, setTone] = useState<EmailTone>(e.tone);
   const [serviceId, setServiceId] = useState(e.serviceId ?? '');
   const [instructions, setInstructions] = useState(e.instructions ?? '');
+  const [templateId, setTemplateId] = useState(e.templateId);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
   const [notice, setNotice] = useState<{ tone: 'ok' | 'warn' | 'error'; text: string } | null>(null);
@@ -440,9 +443,11 @@ function Editor({ d, meta, onChange }: { d: EmailDetail; meta: EmailMeta; onChan
     setTone(e.tone);
     setServiceId(e.serviceId ?? '');
     setInstructions(e.instructions ?? '');
+    setTemplateId(e.templateId);
   }
 
   const dirty = recipient !== (e.recipient ?? '') || subject !== e.subject || body !== e.body;
+  const templateInfo = meta.templates.find((t) => t.id === templateId);
   const objectiveInfo = d.objectives.find((o) => o.id === objective);
 
   // uscire dalla pagina con modifiche non salvate: avviso del browser
@@ -453,17 +458,28 @@ function Editor({ d, meta, onChange }: { d: EmailDetail; meta: EmailMeta; onChan
     return () => window.removeEventListener('beforeunload', warn);
   }, [dirty]);
 
-  async function run(key: string, fn: () => Promise<EmailDetail>, done?: string) {
+  // messaggio quando il server non risponde (rete): dice cosa non è successo
+  const FAILED: Record<string, string> = {
+    save: 'Bozza non salvata: controlla la connessione e riprova.',
+    ready: 'Bozza non salvata: controlla la connessione e riprova.',
+    generate: 'Generazione non riuscita: il testo attuale non è stato modificato. Riprova o usa il modello standard.',
+  };
+
+  async function run(
+    key: string,
+    fn: () => Promise<EmailDetail>,
+    done?: string | ((r: EmailDetail) => { tone: 'ok' | 'warn'; text: string }),
+  ) {
     setBusy(key);
     setError(null);
     setNotice(null);
     try {
       const r = await fn();
       onChange(r);
-      if (done) setNotice({ tone: 'ok', text: done });
+      if (done) setNotice(typeof done === 'string' ? { tone: 'ok', text: done } : done(r));
       return true;
     } catch (err) {
-      setError(errorOf(err, 'Operazione non riuscita.'));
+      setError(errorOf(err, FAILED[key] ?? 'Operazione non riuscita.'));
       return false;
     } finally {
       setBusy(null);
@@ -496,10 +512,17 @@ function Editor({ d, meta, onChange }: { d: EmailDetail; meta: EmailMeta; onChan
           ...(objective === 'servizio' ? { serviceId: serviceId || null } : {}),
           instructions: instructions.trim() || null,
           overwrite,
+          templateId,
         }),
-      mode === 'ai'
-        ? 'Bozza personalizzata generata: rileggila e modificala prima di inviarla.'
-        : 'Testo del modello standard ripristinato.',
+      (r) =>
+        mode !== 'ai'
+          ? { tone: 'ok', text: `Modello ufficiale ripristinato: ${templateInfo?.name ?? 'modello standard'}.` }
+          : r.email.internalNotes?.evidenceQuality === 'bassa'
+            ? {
+                tone: 'warn',
+                text: 'Email personalizzata generata con poche informazioni sull’azienda: è una presentazione adatta al settore, senza osservazioni specifiche. Rileggila e completala prima di inviarla.',
+              }
+            : { tone: 'ok', text: 'Email personalizzata generata: rileggila e modificala prima di inviarla.' },
     );
 
   const copy = async (what: string, text: string) => {
@@ -661,6 +684,22 @@ function Editor({ d, meta, onChange }: { d: EmailDetail; meta: EmailMeta; onChan
                   else void generate(false);
                 }}
               >
+                <SelectField
+                  label="Modello"
+                  value={templateId}
+                  onChange={(ev) => setTemplateId(ev.target.value as typeof templateId)}
+                  hint={
+                    templateId !== e.templateId
+                      ? 'Il nuovo modello si applica con il pulsante qui sotto.'
+                      : `Versione ${e.templateVersion} del testo ufficiale.`
+                  }
+                >
+                  {meta.templates.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </SelectField>
                 <fieldset className="fieldset fieldset--plain">
                   <legend>Modalità</legend>
                   <label className="check check--inline">
@@ -670,7 +709,7 @@ function Editor({ d, meta, onChange }: { d: EmailDetail; meta: EmailMeta; onChan
                       checked={mode === 'standard'}
                       onChange={() => setMode('standard')}
                     />
-                    <span>Modello standard</span>
+                    <span>Modello ufficiale</span>
                   </label>
                   <label className="check check--inline">
                     <input
@@ -684,10 +723,15 @@ function Editor({ d, meta, onChange }: { d: EmailDetail; meta: EmailMeta; onChan
                   </label>
                   <p className="small muted">
                     {mode === 'standard'
-                      ? `${meta.template.name}: testo ufficiale, invariato.`
-                      : 'Personalizza apertura, osservazione sul sito, servizi pertinenti e invito finale con i dati verificati; offerta, consulenza gratuita, preventivo entro 24 ore e contatti restano quelli ufficiali.'}
-                    {!meta.aiConfigured && ' Personalizzazione AI non configurata sul server.'}
+                      ? `${templateInfo?.name ?? meta.template.name}: testo ufficiale, invariato.`
+                      : 'L’AI personalizza oggetto, apertura, opportunità per l’azienda, servizio proposto e invito finale con le informazioni disponibili (categoria, città, sito, audit, servizi del catalogo). Offerta, consulenza gratuita, preventivo entro 24 ore e contatti restano quelli ufficiali. Generare non invia nulla.'}
                   </p>
+                  {!meta.aiConfigured && (
+                    <p className="small field__error">
+                      Personalizzazione AI non configurata sul server: l’amministratore deve impostare AI_API_KEY nel
+                      file .env e riavviare il server.
+                    </p>
+                  )}
                 </fieldset>
                 {mode === 'ai' && (
                   <>
@@ -743,11 +787,14 @@ function Editor({ d, meta, onChange }: { d: EmailDetail; meta: EmailMeta; onChan
                   >
                     {mode === 'ai'
                       ? e.mode === 'ai'
-                        ? 'Rigenera con AI'
-                        : 'Genera con AI'
-                      : 'Usa il modello standard'}
+                        ? 'Rigenera email personalizzata'
+                        : 'Personalizza con AI'
+                      : 'Ripristina modello ufficiale'}
                   </Button>
                 </div>
+                {busy === 'generate' && mode === 'ai' && (
+                  <Loading label="Generazione dell’email personalizzata con le informazioni sull’azienda…" />
+                )}
               </form>
             </Section>
           )}
@@ -930,8 +977,8 @@ function ExistingEmail({ id }: { id: string }) {
         title={d.business.name}
         lede={
           <>
-            <Status tone={STATUS_TONE[d.email.status]}>{d.email.statusLabel}</Status>{' '}
-            {d.email.mode === 'ai' ? 'Email personalizzata con AI' : meta.data.template.name}
+            <Status tone={STATUS_TONE[d.email.status]}>{d.email.statusLabel}</Status> {d.email.templateName}
+            {d.email.mode === 'ai' ? ' · personalizzata con AI' : ' · testo ufficiale'}
             {d.email.createdBy && ` · creata da ${d.email.createdBy}`}
           </>
         }

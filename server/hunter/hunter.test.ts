@@ -86,7 +86,12 @@ async function drive(
   throw new Error('la ricerca non è terminata');
 }
 
-const run = (target: number, options: Partial<HuntOptions> = {}, sectors = SECTORS3, area = UMBRIA) =>
+const run = (
+  target: number,
+  options: Partial<HuntOptions> = {},
+  sectors = SECTORS3,
+  area: { type: 'region' | 'province'; code: string } = UMBRIA,
+) =>
   createHuntRun(
     db,
     { target, area, sectors, options: { ...NO_AUDIT, ...options } },
@@ -467,5 +472,105 @@ describe('API, elenco ed esportazione', () => {
       "SELECT count(*)::int AS n FROM audit_log WHERE action = 'leads.exported'",
     );
     expect(rows[0]!.n).toBe(2);
+  });
+});
+
+describe('aziende con email pubblica', () => {
+  it('email con il nome dell’attività conservate; email di persone mai conservate', () => {
+    expect(classifyEmail('PizzeriaDaMario@Gmail.com', 'Pizzeria da Mario')).toEqual({
+      email: 'pizzeriadamario@gmail.com',
+      kind: 'generic',
+    });
+    expect(classifyEmail('mario.rossi@gmail.com', 'Pizzeria da Mario')).toEqual({ email: null, kind: 'personal' });
+    expect(contactsFromTags({ name: 'Hotel Belvedere', email: 'hotelbelvedere@libero.it' }).email).toBe(
+      'hotelbelvedere@libero.it',
+    );
+  });
+
+  it('la query legge solo attività con un sito o un’email quando richiesto', () => {
+    const m = geo().municipality('070006')!;
+    const opts = { timeoutSeconds: 60, maxsizeBytes: 1 << 28 };
+    const plain = buildUnitQuery({ municipalities: [m] }, [], 2, opts, sectorsInOrder(['dentisti']));
+    const contact = buildUnitQuery({ municipalities: [m] }, [], 2, opts, sectorsInOrder(['dentisti']), {
+      requireContact: true,
+    });
+    const FILTER = '[~"^(website|contact:website|url|email|contact:email)$"~"."]';
+    expect(plain).not.toContain(FILTER);
+    expect(contact).toContain(FILTER);
+  });
+
+  it('ricerca: solo attività con sito o email, obiettivo contato sulle email pubbliche con la provenienza', async () => {
+    const id = await run(
+      5,
+      { publicEmail: true, excludeKnown: true, audit: true },
+      ['farmacie', 'dentisti', 'commercialisti', 'panifici_pasticcerie'],
+      { type: 'province', code: '094' },
+    );
+    const before = fake.control.queries.length;
+    for (let i = 0; i < 60; i++) {
+      await hunter.tick();
+      while (await discovery.runOnce());
+      const { rows } = await db.query<{ phase: string }>('SELECT phase FROM hunt_runs WHERE id = $1', [id]);
+      if (rows[0]!.phase !== 'discovery') break;
+    }
+    // la fonte riceve il filtro sui recapiti
+    expect(
+      fake.control.queries
+        .slice(before)
+        .every((q) => q.includes('[~"^(website|contact:website|url|email|contact:email)$"~"."]')),
+    ).toBe(true);
+    const { rows } = await db.query<{
+      name: string;
+      website_url: string | null;
+      website_shared: boolean;
+      email: string | null;
+      email_source: string | null;
+      email_source_url: string | null;
+      is_new: boolean;
+    }>(
+      `SELECT b.name, b.website_url, b.website_shared, b.email, b.email_source, b.email_source_url, hb.is_new
+         FROM hunt_run_businesses hb JOIN businesses b ON b.id = hb.business_id WHERE hb.run_id = $1`,
+      [id],
+    );
+    expect(rows.length).toBeGreaterThan(0);
+    // nessuna attività senza un recapito da controllare (panifici e commercialisti con email personale esclusi)
+    for (const r of rows) expect(Boolean((r.website_url && !r.website_shared) || r.email)).toBe(true);
+    expect(rows.some((r) => r.name.startsWith('Panificio'))).toBe(false);
+    expect(rows.some((r) => r.name.startsWith('Studio Commercialista'))).toBe(false);
+    // email indicate dalla fonte: provenienza «osm» con la scheda della fonte
+    const withEmail = rows.filter((r) => r.email);
+    expect(withEmail.length).toBeGreaterThanOrEqual(5);
+    for (const r of withEmail) {
+      expect(r.email_source).toBe('osm');
+      expect(r.email_source_url).toMatch(/^https:\/\/www\.openstreetmap\.org\/node\/\d+$/);
+      expect(r.is_new).toBe(true);
+    }
+    const detail = await getHuntRun(db, id);
+    expect(detail.progress.qualified).toBe(withEmail.length);
+    expect(detail.progress.emails).toMatchObject({ public: withEmail.length, withSource: withEmail.length });
+    expect(detail.progress.emails.publicNew).toBe(withEmail.length);
+    expect(detail.progress.awaitingAssessment).toBe(rows.length);
+    expect(detail.progress.checkpoint.areasDone).toBeGreaterThan(0);
+    // i siti senza email vengono messi in coda per il controllo (prima quelli senza alcuna email)
+    const { rows: queued } = await db.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM audit_job_items i JOIN audit_jobs j ON j.id = i.job_id WHERE j.hunt_run_id = $1`,
+      [id],
+    );
+    expect(queued[0]!.n).toBeGreaterThan(0);
+    await controlHuntRun(db, id, 'cancel', userId);
+    await hunter.tick();
+  });
+
+  it('API: l’obiettivo email richiede la verifica dei siti', async () => {
+    const c = client(server.url);
+    await c.request('POST', '/api/auth/login', { email: 'hunter@noventra.test', password: PASSWORD });
+    const r = await c.request('POST', '/api/hunter/runs', {
+      target: 10,
+      area: { type: 'province', code: '094' },
+      sectors: ['dentisti'],
+      options: { minScore: null, websitePreference: 'any', excludeKnown: true, audit: false, publicEmail: true },
+    });
+    expect(r.status).toBe(400);
+    expect(JSON.stringify(r.body)).toMatch(/verifica automatica dei siti/);
   });
 });

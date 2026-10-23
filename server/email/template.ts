@@ -94,8 +94,156 @@ export const REQUIRED_ELEMENTS: { label: string; text: string }[] = [
   { label: 'firma', text: SIGNATURE },
 ];
 
-export const missingElements = (body: string) =>
-  REQUIRED_ELEMENTS.filter((e) => !body.includes(e.text)).map((e) => e.label);
+// ---------------------------------------------------------------- modello Farmacube (farmacie)
+
+/*
+ * Modello ufficiale Farmacube per le farmacie, testo approvato (versione 1). Testo semplice: i titoli in grassetto
+ * del testo approvato diventano righe normali (le email partono senza HTML).
+ * La variante personalizzata cambia SOLO l'apertura, un paragrafo di pertinenza e la domanda finale; saluto,
+ * presentazione di Noventra, funzioni di Farmacube, obiettivo, link ufficiali, consulenza gratuita e firma restano
+ * identici.
+ */
+
+export const FARMACUBE = { site: 'https://www.farmacube.it/' } as const;
+export const FARMACUBE_TEMPLATE_ID = 'farmacube';
+export const FARMACUBE_SUBJECT = 'Una soluzione e-commerce pensata per la sua farmacia | Farmacube';
+
+const F_GREETING = 'Gentile Dottore/Dottoressa,';
+
+const F_OPENING =
+  "oggi avere una presenza online efficace può rappresentare un'importante opportunità di crescita per una farmacia. Per questo vogliamo presentarle Farmacube, una soluzione pensata per semplificare la realizzazione e la gestione del suo e-commerce.";
+
+const F_ABOUT =
+  "Siamo Noventra, un'agenzia digitale specializzata nello sviluppo di siti web, e-commerce e soluzioni tecnologiche su misura. Con Farmacube abbiamo sviluppato una soluzione dedicata alle esigenze specifiche delle farmacie, per aiutarle a vendere online con un processo più semplice, rapido e accessibile.";
+
+const F_FEATURES = `Cosa può fare Farmacube per la sua farmacia?
+
+- E-commerce personalizzato: un negozio online con il brand della sua farmacia, pronto per presentare e vendere i prodotti.
+- Integrazione con il gestionale: collegamento con i gestionali supportati per semplificare la gestione delle attività online.
+- Catalogo prodotti automatizzato: sincronizzazione dei listini dei grossisti e aggiornamento delle schede prodotto, con foto, descrizioni e caratteristiche tecniche.
+- Gestione più efficiente: strumenti per configurare prezzi e ricarichi, riducendo il lavoro manuale necessario per mantenere aggiornato il catalogo.
+- Avvio rapido e assistenza: una soluzione strutturata per ridurre la complessità tecnica e accompagnarla nella gestione del negozio online.`;
+
+const F_GOAL =
+  'Il nostro obiettivo è offrirle una soluzione concreta, evitando costi e complessità non necessari e individuando la configurazione più adatta alle esigenze e al budget della sua farmacia.';
+
+const F_LINKS = `Può scoprire come funziona visitando il nostro sito dedicato:
+
+Farmacube: ${FARMACUBE.site}
+
+Per conoscere anche gli altri nostri servizi di sviluppo web, e-commerce e digitalizzazione:
+
+Noventra: ${NOVENTRA.site}`;
+
+const F_CONSULTATION =
+  'Saremmo lieti di offrirle una consulenza gratuita e senza impegno, per capire come migliorare la presenza online della sua farmacia e valutare insieme la soluzione più adatta.';
+
+const F_CTA = 'Le farebbe piacere approfondire la proposta con una breve conversazione?';
+
+const F_SIGNATURE = `Cordiali saluti,
+
+Team Noventra
+Sviluppo web ed e-commerce
+${NOVENTRA.site}
+${FARMACUBE.site}
+${NOVENTRA.email}
+${NOVENTRA.phone}`;
+
+export const FARMACUBE_BODY = [
+  F_GREETING,
+  F_OPENING,
+  F_ABOUT,
+  F_FEATURES,
+  F_GOAL,
+  F_LINKS,
+  F_CONSULTATION,
+  F_CTA,
+  F_SIGNATURE,
+].join('\n\n');
+
+function farmacubePersonalized(p: PersonalParts): string {
+  return [
+    F_GREETING,
+    p.opening,
+    F_ABOUT,
+    ...(p.observation ? [p.observation] : []),
+    p.relevance,
+    F_FEATURES,
+    F_GOAL,
+    F_LINKS,
+    F_CONSULTATION,
+    p.callToAction,
+    F_SIGNATURE,
+  ].join('\n\n');
+}
+
+// ---------------------------------------------------------------- registro dei modelli
+
+export type TemplateId = typeof TEMPLATE_ID | typeof FARMACUBE_TEMPLATE_ID;
+
+export interface EmailTemplate {
+  id: TemplateId;
+  name: string;
+  /** Versione del testo approvato: cambia solo con un nuovo testo ufficiale (le bozze salvano quella usata). */
+  version: number;
+  subject: string;
+  body: string;
+  /** Marchio che l'oggetto di una variante personalizzata deve contenere. */
+  brand: string;
+  /** Categorie di «Trova aziende» per cui è il modello predefinito. */
+  defaultFor: string[];
+  required: { label: string; text: string }[];
+  personalize: (p: PersonalParts) => string;
+}
+
+export const EMAIL_TEMPLATES: Record<TemplateId, EmailTemplate> = {
+  [TEMPLATE_ID]: {
+    id: TEMPLATE_ID,
+    name: TEMPLATE_NAME,
+    version: 1,
+    subject: DEFAULT_SUBJECT,
+    body: STANDARD_BODY,
+    brand: 'Noventra',
+    defaultFor: [],
+    required: REQUIRED_ELEMENTS,
+    personalize: personalizedBody,
+  },
+  [FARMACUBE_TEMPLATE_ID]: {
+    id: FARMACUBE_TEMPLATE_ID,
+    name: 'Farmacube — e-commerce per farmacie',
+    version: 1,
+    subject: FARMACUBE_SUBJECT,
+    body: FARMACUBE_BODY,
+    brand: 'Farmacube',
+    // solo farmacie: le parafarmacie e le altre attività sanitarie usano il modello standard
+    defaultFor: ['farmacie'],
+    required: [
+      { label: 'saluto', text: F_GREETING },
+      { label: 'presentazione di Noventra e Farmacube', text: F_ABOUT },
+      { label: 'funzioni di Farmacube', text: F_FEATURES },
+      { label: 'obiettivo della proposta', text: F_GOAL },
+      { label: 'sito Farmacube e sito Noventra', text: F_LINKS },
+      { label: 'consulenza gratuita', text: F_CONSULTATION },
+      { label: 'firma con i contatti ufficiali', text: F_SIGNATURE },
+    ],
+    personalize: farmacubePersonalized,
+  },
+};
+
+export const TEMPLATE_IDS = Object.keys(EMAIL_TEMPLATES) as [TemplateId, ...TemplateId[]];
+
+export const templateOf = (id: string | null | undefined): EmailTemplate =>
+  EMAIL_TEMPLATES[(id ?? TEMPLATE_ID) as TemplateId] ?? EMAIL_TEMPLATES[TEMPLATE_ID];
+
+/** Modello predefinito per la categoria commerciale dell'azienda (Farmacube solo per le farmacie). */
+export function templateForCategory(category: string | null | undefined): EmailTemplate {
+  return Object.values(EMAIL_TEMPLATES).find((t) => category && t.defaultFor.includes(category)) ?? templateOf(null);
+}
+
+export const missingElements = (body: string, templateId: string = TEMPLATE_ID) =>
+  templateOf(templateId)
+    .required.filter((e) => !body.includes(e.text))
+    .map((e) => e.label);
 
 // ---------------------------------------------------------------- obiettivi e toni
 

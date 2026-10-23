@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
-import { expectAccessible, navLink, signInAsAdmin, trackErrors, expectHome } from './helpers.ts';
+import { expectAccessible, navLink, signInAsAdmin, trackErrors, expectHome, openSections } from './helpers.ts';
 import { E2E_USERS } from './users.ts';
 
 /*
@@ -112,13 +112,18 @@ test('lead della ricerca: filtri per settore, recapiti, esclusione dalla prospez
   const name = (await rows.nth(1).getByRole('link').first().textContent())!;
   await rows.nth(1).getByRole('link', { name }).click();
   await expect(page.getByRole('heading', { level: 1, name })).toBeVisible();
-  await expect(page.getByText('email personale indicata dalla fonte, non salvata')).toBeVisible();
+  await expect(page.getByText(/solo un indirizzo personale, non salvato/)).toBeVisible();
   await expect(page.getByText('mario.rossi')).toHaveCount(0);
+  await openSections(page);
   await expect(page.getByText('trovata per la prima volta da questa ricerca')).toBeVisible();
 
-  await page.getByRole('button', { name: 'Escludi dalla prospezione' }).click();
-  await page.getByLabel('Motivo (facoltativo)').fill('Fuori target (prova e2e)');
-  await page.getByRole('button', { name: 'Escludi', exact: true }).click();
+  // «Gestisci contatto» → «Escludi azienda»: motivo obbligatorio e conferma esplicita
+  await page.getByRole('button', { name: 'Gestisci contatto' }).click();
+  const manage = page.getByRole('dialog', { name: 'Gestisci contatto' });
+  await expect(manage.getByRole('button', { name: 'Conferma l’esclusione' })).toBeDisabled();
+  await manage.getByRole('radio', { name: /^Azienda non pertinente/ }).check();
+  await manage.getByLabel('Nota (facoltativa)').fill('Fuori target (prova e2e)');
+  await manage.getByRole('button', { name: 'Conferma l’esclusione' }).click();
   await expect(page.getByText(/Fuori target \(prova e2e\)/)).toBeVisible();
   await expectAccessible(page, 'scheda esclusa');
 
@@ -128,8 +133,9 @@ test('lead della ricerca: filtri per settore, recapiti, esclusione dalla prospez
   await page.getByLabel('Escluse dalla prospezione').selectOption({ label: 'Solo le escluse' });
   await expect(page.getByText('Esclusa dalla prospezione')).toBeVisible();
   await page.getByRole('link', { name }).click();
-  await page.getByRole('button', { name: 'Includi di nuovo' }).click();
-  await expect(page.getByRole('button', { name: 'Escludi dalla prospezione' })).toBeVisible();
+  await page.getByRole('button', { name: 'Gestisci contatto' }).click();
+  await page.getByRole('button', { name: 'Riporta tra i potenziali clienti' }).click();
+  await expect(page.locator('.notice__title', { hasText: 'Esclusa dai potenziali clienti' })).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 

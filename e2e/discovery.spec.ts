@@ -1,5 +1,5 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
-import { expectAccessible, login, navLink, trackErrors, expectHome, openAdvanced } from './helpers.ts';
+import { expectAccessible, login, navLink, trackErrors, expectHome, openAdvanced, openSections } from './helpers.ts';
 import { E2E_AUDIT_BUSINESSES, E2E_FAKE_OVERPASS_PORT, E2E_USERS } from './users.ts';
 
 /*
@@ -102,16 +102,21 @@ test('ricerca su un comune: avanzamento reale, risultati salvati, scheda con pro
 
   await page.getByRole('link', { name: 'Farmacia di Prova Albano Laziale', exact: true }).click();
   await expect(page.getByRole('heading', { level: 1, name: 'Farmacia di Prova Albano Laziale' })).toBeVisible();
+  await openSections(page);
   await expect(page.getByText('Albano Laziale, Roma (RM), Lazio')).toBeVisible();
-  await expect(page.getByRole('link', { name: 'https://www.farmacia-albanolaziale.example.it/' })).toBeVisible();
+  // sito in cima alla scheda, con il dominio come testo e l'indirizzo completo come link
+  await expect(
+    page.getByRole('region', { name: 'Contatti' }).getByRole('link', { name: 'farmacia-albanolaziale.example.it' }),
+  ).toHaveAttribute('href', 'https://www.farmacia-albanolaziale.example.it/');
   const source = page.getByRole('link', { name: 'Apri il record originale' });
   await expect(source).toHaveAttribute('href', 'https://www.openstreetmap.org/node/9005800301');
   await expect(page.getByText(/ODbL 1\.0 — © OpenStreetMap contributors/)).toBeVisible();
   await expect(page.getByText('Creata da una ricerca')).toBeVisible();
   // dalla Fase 6 il telefono pubblico dell'attività è conservato e mostrato; l'email non è indicata dalla fonte
   await expect(page.getByText(/Telefono indicato/)).toBeVisible();
-  await expect(page.getByRole('link', { name: '+39 000 0000000' })).toHaveAttribute('href', 'tel:+390000000000');
-  await expect(page.getByText('email generica non indicata')).toBeVisible();
+  const contacts = page.getByRole('region', { name: 'Contatti' });
+  await expect(contacts.getByRole('link', { name: '+39 000 0000000' })).toHaveAttribute('href', 'tel:+390000000000');
+  await expect(contacts.getByText('Email non disponibile', { exact: true })).toBeVisible();
   await expectAccessible(page, 'scheda azienda');
   expect(errors).toEqual([]);
 });
@@ -213,8 +218,8 @@ test('dashboard: numeri reali dal database', async ({ page }) => {
     .getByRole('list', { name: 'Numeri principali' })
     .getByRole('listitem')
     .filter({ hasText: 'Aziende trovate' });
-  await expect(kpi.locator('.kpi__value')).toHaveText(/^[\d.]+$/);
-  const shown = Number((await kpi.locator('.kpi__value').textContent())!.replace(/\./g, ''));
+  await expect(kpi.locator('.dash-kpi__value')).toHaveText(/^[\d.]+$/);
+  const shown = Number((await kpi.locator('.dash-kpi__value').textContent())!.replace(/\./g, ''));
   const api = await page.request.get('/api/businesses?pageSize=1');
   expect(shown).toBe((await api.json()).total);
   await kpi.getByRole('link').click();

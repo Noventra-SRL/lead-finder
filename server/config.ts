@@ -43,6 +43,15 @@ export interface DiscoveryConfig {
   staleDataDays: number;
   /** Elaborazione dei job in questo processo (disattivabile se si avviano più istanze dell'API). */
   worker: boolean;
+  /** Google Maps Platform — Places API (New): facoltativo; la chiave resta sul server. */
+  google: {
+    apiKey: string | null;
+    baseUrl: string;
+    /** Pagine da 20 risultati per ricerca (massimo 3, limite dell'API). */
+    maxPages: number;
+    /** Richieste al giorno (limite di spesa): oltre, le ricerche si fermano e lo dichiarano. */
+    dailyLimit: number;
+  };
 }
 
 export interface AuditConfig {
@@ -240,6 +249,12 @@ const envSchema = z.object({
     z.url({ protocol: /^http$/ }).refine((u) => new URL(u).hostname === '127.0.0.1', 'solo 127.0.0.1'),
   ),
   AUDIT_TEST_LOOPBACK_PORTS: optional(z.string().regex(/^\d{1,5}(,\d{1,5})*$/)),
+  GOOGLE_PLACES_API_KEY: optional(z.string().min(20, 'chiave troppo corta').max(200)),
+  GOOGLE_PLACES_MAX_PAGES: optional(z.coerce.number().int().min(1).max(3)),
+  GOOGLE_PLACES_DAILY_LIMIT: optional(z.coerce.number().int().min(0).max(1_000_000)),
+  GOOGLE_PLACES_TEST_BASE_URL: optional(
+    z.url({ protocol: /^http$/ }).refine((u) => new URL(u).hostname === '127.0.0.1', 'solo 127.0.0.1'),
+  ),
   SMTP_HOST: optional(z.string().regex(/^[A-Za-z0-9.-]{1,253}$/, 'nome host non valido')),
   SMTP_PORT: optional(z.coerce.number().int().min(1).max(65535)),
   SMTP_SECURITY: optional(z.enum(['tls', 'starttls', 'none'])),
@@ -250,7 +265,19 @@ const envSchema = z.object({
   EMAIL_REPLY_TO: optional(z.email('indirizzo email non valido')),
   EMAIL_SENDER_AUTHORIZED: optional(z.enum(['si', 'no'])),
   EMAIL_TIMEOUT_SECONDS: optional(z.coerce.number().int().min(5).max(120)),
+  // nomi alternativi (convenzione di Google Workspace / nodemailer), equivalenti ai precedenti
+  SMTP_SECURE: optional(z.enum(['true', 'false'], { error: 'usa true (porta 465) o false (STARTTLS, porta 587)' })),
+  SMTP_PASS: optional(z.string().max(1000)),
+  EMAIL_SENDER: optional(z.email('indirizzo email non valido')),
+  EMAIL_SENDER_NAME: optional(z.string().regex(/^[^\r\n<>"]{1,80}$/, 'nome del mittente non valido')),
 });
+
+/** Stessa impostazione con due nomi: vale quella indicata; due valori diversi sono un errore (mai una scelta silenziosa). */
+function alias<T>(a: string, va: T | undefined, b: string, vb: T | undefined): T | undefined {
+  if (va !== undefined && vb !== undefined && va !== vb)
+    throw new ConfigError(`${a} e ${b} indicano la stessa impostazione con valori diversi: tienine una sola.`);
+  return va ?? vb;
+}
 
 /** Nomi di tutte le variabili lette dal server (documentate in .env.example, verificato da un test). */
 export const ENV_VARIABLES = Object.keys(envSchema.shape);
@@ -300,6 +327,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
       cacheTtlMs: (e.DISCOVERY_CACHE_TTL_HOURS ?? 24) * HOUR,
       staleDataDays: e.DISCOVERY_STALE_DATA_DAYS ?? 7,
       worker: (e.DISCOVERY_WORKER ?? 'on') === 'on',
+      google: googleConfig(e, mode),
     },
     audit: auditConfig(e, mode),
     scoring: { worker: (e.SCORING_WORKER ?? 'on') === 'on' },
@@ -310,7 +338,21 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   };
 }
 
-function emailConfig(e: z.infer<typeof envSchema>, mode: ServerConfig['env']): EmailConfig {
+function emailConfig(env: z.infer<typeof envSchema>, mode: ServerConfig['env']): EmailConfig {
+  // SMTP_SECURE=false (STARTTLS sulla 587) / true (TLS diretto sulla 465) equivale a SMTP_SECURITY=starttls / tls
+  const secure = env.SMTP_SECURE === undefined ? undefined : env.SMTP_SECURE === 'true' ? 'tls' : 'starttls';
+  const host0 = env.SMTP_HOST ?? null;
+  let password = alias('SMTP_PASSWORD', env.SMTP_PASSWORD, 'SMTP_PASS', env.SMTP_PASS);
+  // password per le app di Google: mostrata a gruppi di 4 lettere separati da spazi, va usata senza spazi
+  if (password && host0?.toLowerCase() === 'smtp.gmail.com' && /^[a-z]{4}( [a-z]{4}){3}$/i.test(password.trim()))
+    password = password.replace(/\s+/g, '');
+  const e = {
+    ...env,
+    SMTP_SECURITY: alias<'tls' | 'starttls' | 'none'>('SMTP_SECURITY', env.SMTP_SECURITY, 'SMTP_SECURE', secure),
+    SMTP_PASSWORD: password,
+    EMAIL_FROM_ADDRESS: alias('EMAIL_FROM_ADDRESS', env.EMAIL_FROM_ADDRESS, 'EMAIL_SENDER', env.EMAIL_SENDER),
+    EMAIL_FROM_NAME: alias('EMAIL_FROM_NAME', env.EMAIL_FROM_NAME, 'EMAIL_SENDER_NAME', env.EMAIL_SENDER_NAME),
+  };
   const host = e.SMTP_HOST ?? null;
   const security = e.SMTP_SECURITY ?? (e.SMTP_PORT === 465 ? 'tls' : 'starttls');
   const local = host === '127.0.0.1' || host === 'localhost' || host === '::1';
@@ -383,6 +425,22 @@ function aiConfig(e: z.infer<typeof envSchema>, mode: ServerConfig['env']): AiCo
   };
 }
 
+function googleConfig(e: z.infer<typeof envSchema>, mode: ServerConfig['env']): DiscoveryConfig['google'] {
+  // nei test solo il server finto locale: nessuna richiesta (né spesa) verso Google
+  if (e.GOOGLE_PLACES_TEST_BASE_URL && mode !== 'test')
+    throw new ConfigError('GOOGLE_PLACES_TEST_BASE_URL è ammessa solo con NODE_ENV=test.');
+  if (mode === 'test' && e.GOOGLE_PLACES_API_KEY && !e.GOOGLE_PLACES_TEST_BASE_URL)
+    throw new ConfigError(
+      'Con NODE_ENV=test Google Places usa solo il server finto locale (GOOGLE_PLACES_TEST_BASE_URL): nessuna chiamata reale.',
+    );
+  return {
+    apiKey: e.GOOGLE_PLACES_API_KEY ?? null,
+    baseUrl: e.GOOGLE_PLACES_TEST_BASE_URL ?? 'https://places.googleapis.com',
+    maxPages: e.GOOGLE_PLACES_MAX_PAGES ?? 3,
+    dailyLimit: e.GOOGLE_PLACES_DAILY_LIMIT ?? 1000,
+  };
+}
+
 function auditConfig(e: z.infer<typeof envSchema>, mode: ServerConfig['env']): AuditConfig {
   // l'unica eccezione alla protezione SSRF esiste solo nei test: altrove la sua presenza è un errore di configurazione
   if (e.AUDIT_TEST_LOOPBACK_PORTS && mode !== 'test')
@@ -445,6 +503,7 @@ export const defaultDiscovery: DiscoveryConfig = {
   cacheTtlMs: 24 * HOUR,
   staleDataDays: 7,
   worker: true,
+  google: { apiKey: null, baseUrl: 'https://places.googleapis.com', maxPages: 3, dailyLimit: 1000 },
 };
 
 /** Configurazione per test e sviluppo: origine dalla richiesta, cookie anche su http. */

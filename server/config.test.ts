@@ -95,7 +95,7 @@ describe('.env.example', () => {
     const missing = ENV_VARIABLES.filter((v) => !testOnly.has(v) && !new RegExp(`\\b${v}\\b`).test(example));
     expect(missing).toEqual([]);
     // nessun segreto con un valore
-    for (const secret of ['AI_API_KEY', 'SMTP_PASSWORD', 'SMTP_USER', 'PAGESPEED_API_KEY', 'DATABASE_URL'])
+    for (const secret of ['AI_API_KEY', 'SMTP_PASS', 'SMTP_USER', 'PAGESPEED_API_KEY', 'DATABASE_URL'])
       expect(example).toMatch(new RegExp(`^${secret}=$`, 'm'));
     // il file di esempio si carica senza errori
     const env = Object.fromEntries(

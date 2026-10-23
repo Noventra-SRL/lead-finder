@@ -1,4 +1,6 @@
 import { AiWorker } from './ai/jobs.ts';
+import { dbUsageBudget } from './discovery/google/usage.ts';
+import { GooglePlacesProvider } from './discovery/google/places.ts';
 import { AutoAssessor } from './ai/queue.ts';
 import { createProvider } from './ai/provider.ts';
 import { createAiServices } from './ai/services.ts';
@@ -11,6 +13,7 @@ import { AuditWorker } from './audit/worker.ts';
 import { createScoringJob, ScoringWorker } from './scoring/jobs.ts';
 import { HuntWorker } from './hunter/worker.ts';
 import { ReminderWorker } from './workflow/reminders.ts';
+import { DomainCheckWorker } from './enrichment/domain.ts';
 import { createEmailServices } from './email/sender.ts';
 import { recoverStaleSends } from './email/store.ts';
 import { activeCatalog } from './matching/store.ts';
@@ -22,6 +25,7 @@ import { assertMigrated } from './db/migrate.ts';
 import { dbCache, purgeExpiredCache } from './discovery/cache.ts';
 import { OverpassProvider, overpassUserAgent } from './discovery/osm/overpass.ts';
 import { DiscoveryWorker } from './discovery/worker.ts';
+import { startCategoryBackfill } from './categories/store.ts';
 import { createApp } from './http/app.ts';
 import { createStaticHandler } from './http/static.ts';
 import { createLogger } from './logger.ts';
@@ -77,10 +81,25 @@ const provider = new OverpassProvider(
 // punteggi dei lead: configurazione attiva verificata all'avvio (la prima volta registra i valori predefiniti)
 await activeConfig(db);
 await activeCatalog(db);
+// categorie commerciali delle aziende esistenti: classificate in sottofondo, riprende dopo un riavvio
+const categoryBackfill = startCategoryBackfill(db, log);
 const scoringWorker = config.scoring.worker ? new ScoringWorker(db, { log }) : null;
 scoringWorker?.start();
+// Google Maps (Places API): seconda fonte facoltativa per le ricerche di lead; senza chiave resta non configurata
+const googleProvider = new GooglePlacesProvider(
+  {
+    apiKey: config.discovery.google.apiKey,
+    baseUrl: config.discovery.google.baseUrl,
+    maxPages: config.discovery.google.maxPages,
+    timeoutMs: 30_000,
+    maxRetries: config.discovery.maxRetries,
+    minIntervalMs: 200,
+  },
+  { budget: dbUsageBudget(db, config.discovery.google.dailyLimit) },
+);
+const providers = [provider, googleProvider];
 const worker = config.discovery.worker
-  ? new DiscoveryWorker(db, provider, {
+  ? new DiscoveryWorker(db, providers, {
       log,
       staleDataDays: config.discovery.staleDataDays,
       // a ricerca terminata, i punteggi delle aziende viste vengono aggiornati in background
@@ -125,6 +144,7 @@ const huntWorker =
           config: config.discovery,
           providerId: provider.info().id,
           configured: () => provider.info().configured,
+          configuredFor: (id) => providers.find((p) => p.info().id === id)?.info().configured ?? false,
           wake: () => worker.wake(),
         },
         audit: { config: config.audit, policy: auditPolicy, wake: () => auditWorker?.wake() },
@@ -134,6 +154,9 @@ huntWorker?.start();
 // promemoria dei follow-up (in scadenza e scaduti) nell'applicazione: regole fisse, nessun messaggio verso l'esterno
 const reminderWorker = config.reminders.worker ? new ReminderWorker(db, log) : null;
 reminderWorker?.start();
+// controllo DNS del dominio delle email (nessun messaggio inviato); mai nei test, che non usano la rete
+const domainWorker = config.env === 'test' ? null : new DomainCheckWorker(db, log);
+domainWorker?.start();
 // valutazione commerciale con AI: chiave solo sul server; senza chiave resta il punteggio a regole come riserva
 const aiProvider = createProvider(config.ai);
 const aiWorker = config.ai.worker ? new AiWorker(db, { provider: aiProvider, config: config.ai, log }) : null;
@@ -155,7 +178,16 @@ const aiServices = createAiServices(db, {
   wake: () => aiWorker?.wake(),
 });
 if (!aiProvider)
-  log.warn('valutazione commerciale AI non configurata: imposta AI_API_KEY (resta il punteggio a regole)');
+  log.warn(
+    'AI non configurata (valutazione ed email personalizzate): imposta AI_API_KEY nel file .env e riavvia il server',
+  );
+// verifica della chiave in background all'avvio: legge le informazioni del modello, nessun testo generato
+else
+  void aiProvider.verify().then(
+    (r) => log.info('fornitore AI raggiungibile, chiave valida', { model: r.model }),
+    (error: unknown) =>
+      log.warn('verifica del fornitore AI non riuscita', { error: error instanceof Error ? error.message : 'errore' }),
+  );
 if (!config.discovery.overpassUrl) log.warn('scoperta di aziende non configurata: imposta DISCOVERY_OVERPASS_URL');
 // email commerciali: invio SMTP solo con configurazione completa; le bozze funzionano comunque
 const emailServices = createEmailServices(config.email, { log });
@@ -171,7 +203,13 @@ const api = createApp(db, {
     startedAt: new Date(),
     version: pkg.version,
     config,
-    discovery: { provider, config: config.discovery, wake: () => worker?.wake(), workerActive: worker !== null },
+    discovery: {
+      provider,
+      extraProviders: [googleProvider],
+      config: config.discovery,
+      wake: () => worker?.wake(),
+      workerActive: worker !== null,
+    },
     audit: {
       config: config.audit,
       policy: auditPolicy,
@@ -251,6 +289,8 @@ async function shutdown(signal: string) {
         aiWorker?.stop(),
         autoAssessor.stop(),
         reminderWorker?.stop(),
+        domainWorker?.stop(),
+        categoryBackfill.stop(),
         aiServices.idle(),
       ]);
       await db.close();

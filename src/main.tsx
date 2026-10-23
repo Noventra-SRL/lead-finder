@@ -19,6 +19,9 @@ import './styles/ai.css';
 import './styles/home.css';
 import './styles/workflow.css';
 import './styles/email.css';
+import './styles/categories.css';
+import './styles/business.css';
+import './styles/dashboard.css';
 import { App } from './App.tsx';
 
 createRoot(document.getElementById('root')!).render(

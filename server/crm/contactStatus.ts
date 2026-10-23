@@ -3,7 +3,9 @@
  * mai dallo stato dell'interfaccia. Una bozza generata o aperta NON rende un'azienda «contattata»: contano solo le
  * email accettate dal server di posta e le attività di contatto registrate nel CRM.
  *
- *  non_contattare  esclusa dalla prospezione («non contattare»)
+ *  non_contattare  divieto di contatto: rifiuto commerciale registrato, o trattativa chiusa «non contattare»; prevale
+ *                  su tutto e resta anche se l'azienda torna tra i potenziali clienti
+ *  esclusa         esclusa dalla prospezione (motivo registrato), senza divieto di contatto
  *  cliente         ultima opportunità vinta
  *  in_trattativa   opportunità aperta in una fase avanzata (interessato, appuntamento, preventivo, negoziazione)
  *  perso           ultima opportunità persa
@@ -18,6 +20,7 @@ export const CONTACT_STATUSES = [
   'cliente',
   'perso',
   'non_contattare',
+  'esclusa',
 ] as const;
 export type ContactStatus = (typeof CONTACT_STATUSES)[number];
 
@@ -28,6 +31,7 @@ export const CONTACT_STATUS_LABEL: Record<ContactStatus, string> = {
   cliente: 'Cliente',
   perso: 'Perso',
   non_contattare: 'Non contattare',
+  esclusa: 'Esclusa dalla prospezione',
 };
 
 /** Tipi di attività del CRM che contano come contatto con l'azienda. */
@@ -43,8 +47,13 @@ export const LAST_CONTACT_SQL = `GREATEST(
 const STAGE_SQL = `(SELECT o.stage FROM crm_opportunities o WHERE o.business_id = b.id
   ORDER BY (o.stage NOT IN ('vinto', 'perso', 'non_contattare')) DESC, o.created_at DESC LIMIT 1)`;
 
+/** Divieto di contatto su ogni canale o sull'email (rifiuto commerciale, oppure trattativa chiusa «non contattare»). */
+export const DO_NOT_CONTACT_SQL = `(b.do_not_contact_at IS NOT NULL
+  OR EXISTS (SELECT 1 FROM crm_opportunities o WHERE o.business_id = b.id AND o.stage = 'non_contattare'))`;
+
 export const CONTACT_STATUS_SQL = `CASE
-  WHEN b.excluded_at IS NOT NULL THEN 'non_contattare'
+  WHEN ${DO_NOT_CONTACT_SQL} THEN 'non_contattare'
+  WHEN b.excluded_at IS NOT NULL THEN 'esclusa'
   WHEN ${STAGE_SQL} = 'vinto' THEN 'cliente'
   WHEN ${STAGE_SQL} IN ('interessato', 'appuntamento', 'preventivo', 'negoziazione') THEN 'in_trattativa'
   WHEN ${STAGE_SQL} = 'perso' THEN 'perso'

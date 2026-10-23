@@ -16,11 +16,17 @@ export const CONTACT_TONE: Record<ContactStatus, 'ok' | 'warn' | 'danger' | 'idl
   cliente: 'ok',
   perso: 'idle',
   non_contattare: 'danger',
+  esclusa: 'idle',
 };
 
-/** Email a cui si può scrivere: generica, pubblica e azienda non esclusa. */
+/** Email a cui si può scrivere: generica, pubblica, azienda non esclusa e senza divieto di contatto via email. */
 export const canEmail = (b: BusinessSummary) =>
-  Boolean(b.contacts.email) && b.contacts.emailKind !== 'personal' && b.contact?.status !== 'non_contattare';
+  Boolean(b.contacts.email) &&
+  b.contacts.emailKind !== 'personal' &&
+  b.contact?.status !== 'non_contattare' &&
+  b.contact?.status !== 'esclusa' &&
+  !b.excluded &&
+  !(b.doNotContact && b.doNotContact.scope !== 'telefono');
 
 const short = (s: string, n = 140) => (s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s);
 
@@ -29,10 +35,13 @@ export function ProspectTable({
   onCompose,
   caption,
   waiting = false,
+  showCategory = false,
 }: {
   items: BusinessSummary[];
   onCompose: (b: BusinessSummary) => void;
   caption: string;
+  /** Elenco con più categorie: la categoria commerciale accanto alla città. */
+  showCategory?: boolean;
   /** Vista «In attesa»: la prossima azione è registrare la risposta nella trattativa. */
   waiting?: boolean;
 }) {
@@ -62,7 +71,14 @@ export function ProspectTable({
                     {b.name}
                   </Link>
                   <span className="small muted prospects__meta">
-                    {[b.place.municipality, b.sector?.label ?? b.categoryLabel].filter(Boolean).join(' · ')}
+                    {[
+                      b.place.municipality,
+                      showCategory ? b.businessCategory?.label : null,
+                      b.sector?.label ?? b.categoryLabel,
+                    ]
+                      .filter((x, i, all) => x && all.indexOf(x) === i)
+                      .join(' · ')}
+                    {b.businessCategory?.status === 'da_verificare' && ' · categoria da verificare'}
                   </span>
                   {b.website && !b.website.shared && (
                     <a className="small prospects__site" href={b.website.url} target="_blank" rel="noopener noreferrer">
@@ -72,9 +88,25 @@ export function ProspectTable({
                 </td>
                 <td data-label="Email" className="small">
                   {b.contacts.email && b.contacts.emailKind !== 'personal' ? (
-                    <span className="mono">{b.contacts.email}</span>
+                    <>
+                      <span className="mono">{b.contacts.email}</span>
+                      {b.emailInfo && (
+                        <span
+                          className={`email-status${b.emailInfo.status === 'pubblicata' || b.emailInfo.status === 'verificata' ? ' email-status--ok' : ''}`}
+                        >
+                          {b.emailInfo.status === 'da_verificare'
+                            ? 'Da verificare (indicata dalla fonte)'
+                            : b.emailInfo.label}
+                        </span>
+                      )}
+                    </>
                   ) : (
-                    <span className="muted">Email non disponibile</span>
+                    <>
+                      <span className="muted">Email non disponibile</span>
+                      {b.emailInfo && b.emailInfo.status !== 'da_verificare' && (
+                        <span className="email-status">{b.emailInfo.label}</span>
+                      )}
+                    </>
                   )}
                 </td>
                 <td data-label="Punteggio commerciale">
@@ -86,6 +118,9 @@ export function ProspectTable({
                         {c.source === 'rules' && <span className="muted"> · a regole</span>}
                         {c.outdated && <span className="muted"> · da aggiornare</span>}
                       </span>
+                      {b.assessment && b.assessment.state !== 'assessed' && (
+                        <span className="small muted">{b.assessment.label}</span>
+                      )}
                       {b.commercialReason && (
                         <span className="small muted prospects__reason" title={b.commercialReason}>
                           {short(b.commercialReason)}
@@ -119,8 +154,10 @@ export function ProspectTable({
                       !b.contacts.email
                         ? 'Email non disponibile'
                         : b.contact?.status === 'non_contattare'
-                          ? 'Azienda da non contattare'
-                          : undefined
+                          ? 'Contatto vietato: l’azienda ha rifiutato le comunicazioni commerciali'
+                          : b.excluded
+                            ? 'Azienda esclusa dalla prospezione'
+                            : undefined
                     }
                     aria-label={`${waiting ? 'Scrivi ancora a' : 'Invia email a'} ${b.name}`}
                     onClick={() => onCompose(b)}

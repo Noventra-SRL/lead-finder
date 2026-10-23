@@ -270,11 +270,92 @@ export interface Place {
   region: string | null;
 }
 
+import type { BusinessCategoryId } from '../lib/categories.ts';
+export type { BusinessCategoryId };
+
+/** Contattabilità via email (server/enrichment/contactability.ts). */
+export type Contactability =
+  | 'verificata'
+  | 'pubblicata'
+  | 'da_verificare'
+  | 'da_arricchire'
+  | 'nessuna_email'
+  | 'sito_non_accessibile'
+  | 'senza_sito';
+
+export interface EmailInfo {
+  status: Contactability;
+  label: string;
+  source: 'osm' | 'website' | 'manuale' | null;
+  sourceUrl: string | null;
+  foundAt: string | null;
+  /** Livello di verifica: pubblicata in una fonte, dominio controllato via DNS, consegna verificata (mai automatica). */
+  verification: {
+    level: 'delivery_verified' | 'domain_checked' | 'publicly_listed' | 'syntax_valid' | 'unverified';
+    label: string;
+    publiclyListed: boolean;
+    domain: 'mx' | 'a_only' | 'none' | 'error' | null;
+    domainCheckedAt: string | null;
+  } | null;
+}
+
+export interface BusinessCategoryInfo {
+  id: BusinessCategoryId;
+  label: string;
+  status: 'classificata' | 'da_verificare';
+  source: 'automatica' | 'manuale';
+  evidence: string | null;
+}
+
+/** Conteggi reali di una categoria con i filtri attivi. */
+export interface CategoryCounts {
+  total: number;
+  website: number;
+  email: number;
+  assessed: number;
+  ready: number;
+  contacted: number;
+  review: number;
+  /** Con un recapito email scritto sul sito dell'azienda. */
+  published: number;
+  /** Con un sito proprio non ancora controllato per le email. */
+  toEnrich: number;
+}
+
+export interface BusinessCategoriesResponse {
+  all: CategoryCounts;
+  /** Aziende non ancora classificate (comprese in «Tutte le aziende»). */
+  pending: number;
+  /** Con gli stessi filtri: aziende escluse dalla prospezione e con divieto di contatto. */
+  status: { excluded: number; doNotContact: number };
+  categories: {
+    id: BusinessCategoryId;
+    label: string;
+    description: string;
+    empty: string;
+    discover: string;
+    sectors: string[];
+    counts: CategoryCounts;
+  }[];
+}
+
 export interface BusinessSummary {
   id: string;
   name: string;
+  /** Dati inseriti da una persona in «Modifica» (mai dalla fonte). */
+  contactPerson: { name: string | null; role: string | null } | null;
+  notes: string | null;
+  operatingStatus: 'attiva' | 'chiusa_temporaneamente' | 'chiusa_definitivamente' | null;
+  editedFields: string[];
+  editedAt: string | null;
+  /** Versione della scheda: la modifica la invia per non sovrascrivere aggiornamenti intermedi. */
+  updatedAt: string | null;
   category: string;
   categoryLabel: string;
+  /** Categoria commerciale; null finché non è classificata. */
+  businessCategory: BusinessCategoryInfo | null;
+  /** Contattabilità via email e provenienza del recapito. */
+  emailInfo: EmailInfo | null;
   website: { url: string; domain: string | null; shared: boolean } | null;
   place: Place;
   completeness: number;
@@ -287,8 +368,18 @@ export interface BusinessSummary {
   services?: { primary: PrimaryService | null; matchScore: number | null };
   /** Fase 6: settore, recapiti pubblici (email solo generica), esclusione dal contatto. */
   sector: { id: string; label: string } | null;
-  contacts: { phone: string | null; email: string | null; emailKind: 'generic' | 'personal' | null };
-  excluded: { at: string; reason: string | null } | null;
+  contacts: {
+    phone: string | null;
+    email: string | null;
+    emailKind: 'generic' | 'personal' | null;
+    /** Fax e altri numeri indicati dalla fonte (mai dedotti). */
+    fax: string | null;
+    phonesExtra: string[];
+  };
+  /** Esclusione dalla prospezione: motivo codificato e nota. */
+  excluded: { at: string; reason: string | null; code: ExclusionCode; label: string } | null;
+  /** Divieto di contatto (rifiuto commerciale): resta anche se l'azienda viene reinclusa. */
+  doNotContact: { at: string; scope: 'tutti' | 'email' | 'telefono'; note: string | null } | null;
   /** Opportunità del CRM: quella aperta, altrimenti la più recente (Fase 7). */
   crm: { opportunityId: string; stage: StageId; open: boolean } | null;
   /** Punteggio commerciale: valutazione AI, altrimenti punteggio a regole come riserva dichiarata. */
@@ -304,6 +395,16 @@ export interface BusinessSummary {
 }
 
 export interface BusinessDetail extends BusinessSummary {
+  /** Email scritte sul sito, con la pagina e le date (anche quelle non più presenti). */
+  websiteEmails: {
+    email: string;
+    relation: 'same_domain' | 'free_provider' | 'pec' | 'other_domain';
+    via: 'mailto' | 'text';
+    pageUrl: string;
+    firstSeenAt: string;
+    lastSeenAt: string;
+    current: boolean;
+  }[];
   address: { street: string | null; housenumber: string | null; postcode: string | null; city: string | null };
   position: { lat: number; lon: number } | null;
   mergedInto: string | null;
@@ -884,6 +985,8 @@ export interface HunterMeta {
   defaults: { target: number; area: { type: AreaType; code: string }; options: HuntOptions };
   limits: { maxTarget: number };
   provider: { configured: boolean; label: string };
+  /** Fonti disponibili per le ricerche (stato della configurazione, mai le chiavi). */
+  providers: { id: 'osm' | 'google'; label: string; configured: boolean; setupHint: string | null }[];
   workerActive: boolean;
 }
 
@@ -892,6 +995,8 @@ export interface HuntOptions {
   websitePreference: 'any' | 'no_website' | 'website_issues';
   excludeKnown: boolean;
   audit: boolean;
+  /** Obiettivo = aziende con un'email pubblica (dalla fonte o dal sito). */
+  publicEmail?: boolean;
 }
 
 export interface HuntProgress {
@@ -914,6 +1019,18 @@ export interface HuntProgress {
     invalid: number;
   };
   audits: { completed: number; pending: number; failed: number };
+  emails: {
+    published: number;
+    toVerify: number;
+    awaiting: number;
+    none: number;
+    public: number;
+    publicNew: number;
+    withSource: number;
+    missing: number;
+  };
+  awaitingAssessment: number;
+  checkpoint: { areasDone: number; areasTotal: number; lastArea: string | null };
   scored: number;
   ranked: number;
   qualified: number;
@@ -928,6 +1045,9 @@ export interface HuntRun {
   target: number;
   area: { type: AreaType; code: string; name: string };
   sectors: { id: string; label: string }[];
+  /** Ricerca avviata da una categoria di «Trova aziende». */
+  category: { id: BusinessCategoryId; label: string } | null;
+  provider: { id: 'osm' | 'google'; label: string };
   options: HuntOptions;
   plan: { total: number; done: number; current: string | null };
   currentJobId: string | null;
@@ -954,6 +1074,7 @@ export interface HuntRunDetail {
     messages: JobMessage[];
   } | null;
   distribution: {
+    categories: { category: BusinessCategoryId | null; label: string; count: number; new: number }[];
     sectors: { sector: string | null; label: string; count: number }[];
     regions: { regionCode: string | null; region: string; count: number }[];
   };
@@ -1458,7 +1579,24 @@ export interface SendingStatus {
   replyTo: string | null;
   senderAuthorized: boolean;
   missing: string[];
-  lastCheck: { at: string; ok: boolean; message: string } | null;
+  lastCheck: {
+    at: string;
+    ok: boolean;
+    message: string;
+    kind: 'verified' | 'test_sent' | 'sent' | 'auth_error' | 'connection_error' | 'send_failed';
+    label: string;
+  } | null;
+}
+
+export type EmailTemplateId = 'noventra_standard' | 'farmacube';
+
+export interface EmailTemplateInfo {
+  id: EmailTemplateId;
+  name: string;
+  version: number;
+  subject: string;
+  body: string;
+  defaultFor: string[];
 }
 
 export interface EmailMeta {
@@ -1469,6 +1607,8 @@ export interface EmailMeta {
     body: string;
     contacts: { site: string; email: string; phone: string };
   };
+  /** Modelli ufficiali: Farmacube è il predefinito per le farmacie, il modello standard per le altre attività. */
+  templates: EmailTemplateInfo[];
   modes: { id: EmailMode; label: string }[];
   objectives: { id: EmailObjective; label: string }[];
   tones: { id: EmailTone; label: string }[];
@@ -1494,7 +1634,9 @@ export interface CommercialEmail {
   recipientSource: 'public_source' | 'manual' | null;
   subject: string;
   body: string;
-  templateId: string;
+  templateId: EmailTemplateId;
+  templateName: string;
+  templateVersion: number;
   mode: EmailMode;
   objective: EmailObjective;
   tone: EmailTone;
@@ -1505,6 +1647,13 @@ export interface CommercialEmail {
     verifiedFacts: { text: string; refs: string[] }[];
     inferences: { text: string; refs: string[] }[];
     unknowns: string[];
+    // dalla versione 2 del prompt (assenti nelle bozze precedenti)
+    summary?: string;
+    primaryService?: string | null;
+    evidenceQuality?: 'alta' | 'media' | 'bassa';
+    warnings?: string[];
+    promptVersion?: number;
+    evidenceHash?: string;
   } | null;
   aiModel: string | null;
   generatedAt: string | null;
@@ -1615,7 +1764,18 @@ export interface AiCoverage {
   model: string;
 }
 
-export type ContactStatus = 'da_contattare' | 'in_attesa' | 'in_trattativa' | 'cliente' | 'perso' | 'non_contattare';
+export type ContactStatus =
+  'da_contattare' | 'in_attesa' | 'in_trattativa' | 'cliente' | 'perso' | 'non_contattare' | 'esclusa';
+
+/** Motivi dell'esclusione (server/discovery/businesses.ts). */
+export type ExclusionCode =
+  | 'nessun_contatto'
+  | 'contatti_non_validi'
+  | 'rifiuto_commerciale'
+  | 'attivita_chiusa'
+  | 'non_pertinente'
+  | 'duplicato'
+  | 'altro';
 export interface ContactInfo {
   status: ContactStatus;
   label: string;

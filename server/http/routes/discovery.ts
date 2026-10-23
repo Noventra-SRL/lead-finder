@@ -1,4 +1,9 @@
+import { editBusiness, OPERATING_STATUSES } from '../../discovery/edit.ts';
 import { z } from 'zod';
+import { CONTACTABILITY } from '../../enrichment/contactability.ts';
+import { BUSINESS_CATEGORIES, BUSINESS_CATEGORY_IDS } from '../../categories/catalog.ts';
+import { categoryCounts, statusCounts } from '../../categories/counts.ts';
+import { setManualCategory } from '../../categories/store.ts';
 import { CONTACT_STATUSES } from '../../crm/contactStatus.ts';
 import { RULES } from '../../auth/rateLimit.ts';
 import {
@@ -10,6 +15,8 @@ import {
   mergeCandidate,
   MATCH_FILTER_STATUSES,
   setExclusion,
+  revokeDoNotContact,
+  EXCLUSION_CODES,
   AI_STATE_FILTERS,
   SORTS,
   type BusinessFilters,
@@ -387,6 +394,8 @@ export const listSchema = z.object({
   hunt: z.uuid().optional(),
   sector: csv(SECTOR_IDS as [string, ...string[]]),
   excluded: z.enum(['hide', 'only', 'include']).optional(),
+  // divieto di contatto: 1 = solo le aziende con il divieto, 0 = solo quelle senza
+  doNotContact: z.enum(['0', '1']).optional(),
   contact: z.enum(['phone', 'any']).optional(),
   maxPerSector: z.coerce.number().int().min(1).max(1000).optional(),
   maxPerRegion: z.coerce.number().int().min(1).max(1000).optional(),
@@ -394,6 +403,11 @@ export const listSchema = z.object({
   crm: z.enum(['none', 'open', 'any']).optional(),
   contactStatus: csv(CONTACT_STATUSES),
   email: z.enum(['yes', 'no']).optional(),
+  // categoria commerciale di «Trova aziende» ('pending' = non ancora classificate) e categorie da verificare
+  businessCategory: z.enum([...BUSINESS_CATEGORY_IDS, 'pending'], { error: 'Categoria sconosciuta.' }).optional(),
+  categoryReview: z.enum(['0', '1']).default('0'),
+  // contattabilità via email (uno o più stati separati da virgola)
+  contactability: csv(CONTACTABILITY),
   // valutazione commerciale (AI, altrimenti riserva a regole): intervallo di punteggio (es. una fascia), stato, componenti
   minCommercial: z.coerce.number().int().min(0).max(100).optional(),
   maxCommercial: z.coerce.number().int().min(0).max(100).optional(),
@@ -414,7 +428,15 @@ export function filtersFromQuery(
   fixed: { service?: string; ids?: string[] } = {},
 ): BusinessFilters {
   const q = parseQuery(listSchema, params);
-  return { ...q, ...fixed, sectors: q.sector, categories: q.category.filter(isCategoryId), review: q.review === '1' };
+  return {
+    ...q,
+    ...fixed,
+    sectors: q.sector,
+    categories: q.category.filter(isCategoryId),
+    review: q.review === '1',
+    categoryReview: q.categoryReview === '1',
+    doNotContact: q.doNotContact === undefined ? undefined : q.doNotContact === '1',
+  };
 }
 
 /** Elenco delle aziende con i filtri della query (usato anche per le aziende abbinate a un servizio). */
@@ -496,11 +518,146 @@ export const businessRoutes: Route[] = [
     async handle(ctx) {
       const session = sessionOf(ctx);
       const body = parseBody(
-        z.object({ excluded: z.boolean(), reason: z.string().trim().max(300).optional() }).strict(),
+        z
+          .object({
+            excluded: z.boolean(),
+            // motivo obbligatorio per escludere; «reason» (testo) resta accettato come nota
+            code: z.enum(EXCLUSION_CODES, { error: 'Scegli un motivo valido.' }).optional(),
+            note: z.string().trim().max(300).optional(),
+            reason: z.string().trim().max(300).optional(),
+            scope: z.enum(['tutti', 'email', 'telefono']).optional(),
+          })
+          .strict()
+          .refine((b) => !b.excluded || b.code || b.reason, { message: 'Scegli il motivo.', path: ['code'] }),
         ctx.body,
       );
       limit(ctx, `review:${session.user.id}`, RULES.reviewWritesByUser);
-      await setExclusion(ctx.db, ctx.match[1]!, body.excluded, body.reason || null, session.user.id);
+      await setExclusion(
+        ctx.db,
+        ctx.match[1]!,
+        { excluded: body.excluded, code: body.code, note: body.note ?? body.reason ?? null, scope: body.scope },
+        session.user.id,
+      );
+      return ok({ business: await getBusiness(ctx.db, ctx.match[1]!) });
+    },
+  },
+  {
+    // revoca del divieto di contatto: solo amministratori, con un motivo (es. consenso scritto ricevuto)
+    method: 'POST',
+    pattern: new RegExp(`^/api/businesses/${UUID}/do-not-contact/revoke$`),
+    access: 'admin',
+    async handle(ctx) {
+      const session = sessionOf(ctx);
+      const body = parseBody(
+        z.object({ note: z.string().trim().min(5, 'Scrivi il motivo della revoca.').max(300) }).strict(),
+        ctx.body,
+      );
+      limit(ctx, `review:${session.user.id}`, RULES.reviewWritesByUser);
+      await revokeDoNotContact(ctx.db, ctx.match[1]!, body.note, session.user.id);
+      return ok({ business: await getBusiness(ctx.db, ctx.match[1]!) });
+    },
+  },
+  {
+    // città presenti nel database (comuni ISTAT con almeno un'azienda attiva), per il selettore della dashboard
+    method: 'GET',
+    pattern: /^\/api\/businesses\/cities$/,
+    async handle(ctx) {
+      const { rows } = await ctx.db.query<{ code: string; name: string; province_code: string; n: number }>(
+        `SELECT municipality_code AS code, min(municipality_name) AS name, min(province_code) AS province_code,
+                count(*)::int AS n
+           FROM businesses WHERE merged_into IS NULL AND excluded_at IS NULL AND municipality_code IS NOT NULL
+          GROUP BY municipality_code ORDER BY n DESC, name LIMIT 300`,
+      );
+      return ok({
+        items: rows
+          .map((r) => ({
+            code: r.code,
+            name: r.name,
+            province: geo().province(r.province_code)?.sigla ?? null,
+            count: r.n,
+          }))
+          .sort((a, b) => a.name.localeCompare(b.name, 'it')),
+      });
+    },
+  },
+  {
+    // categorie commerciali con i conteggi reali, calcolati con gli stessi filtri dell'elenco
+    method: 'GET',
+    pattern: /^\/api\/businesses\/categories$/,
+    async handle(ctx) {
+      const filters = filtersFromQuery(ctx.url.searchParams);
+      const counts = await categoryCounts(ctx.db, filters);
+      const byId = new Map(counts.categories.map((c) => [c.id, c.counts]));
+      return ok({
+        all: counts.all,
+        pending: counts.pending,
+        // stessi filtri: aziende escluse dalla prospezione e con divieto di contatto (conteggi separati)
+        status: await statusCounts(ctx.db, { ...filters, excluded: undefined }),
+        categories: BUSINESS_CATEGORIES.map((c) => ({
+          id: c.id,
+          label: c.label,
+          description: c.description,
+          empty: c.empty,
+          discover: c.discover,
+          sectors: c.sectors,
+          counts: byId.get(c.id)!,
+        })),
+      });
+    },
+  },
+  {
+    // «Modifica» della scheda: solo i campi inviati; svuotare un campo richiede `clear`; `updatedAt` evita sovrascritture
+    method: 'PATCH',
+    pattern: new RegExp(`^/api/businesses/${UUID}$`),
+    async handle(ctx) {
+      const session = sessionOf(ctx);
+      const str = (max: number) => z.string().max(max, `Al massimo ${max} caratteri.`).nullable().optional();
+      const body = parseBody(
+        z
+          .object({
+            updatedAt: z.iso.datetime({ offset: true, error: 'Versione della scheda mancante: ricarica la pagina.' }),
+            name: z.string().max(200, 'Al massimo 200 caratteri.').optional(),
+            category: z.enum(BUSINESS_CATEGORY_IDS, { error: 'Categoria sconosciuta.' }).nullable().optional(),
+            operatingStatus: z.enum(OPERATING_STATUSES, { error: 'Stato sconosciuto.' }).nullable().optional(),
+            email: str(254),
+            phone: str(40),
+            fax: str(40),
+            website: str(500),
+            street: str(200),
+            housenumber: str(20),
+            postcode: str(10),
+            city: str(120),
+            municipalityCode: z
+              .string()
+              .regex(/^\d{6}$/, 'Comune non valido.')
+              .nullable()
+              .optional(),
+            contactName: str(120),
+            contactRole: str(80),
+            notes: str(5000),
+            clear: z.array(z.string().max(40)).max(20).optional(),
+          })
+          .strict(),
+        ctx.body,
+      );
+      limit(ctx, `review:${session.user.id}`, RULES.reviewWritesByUser);
+      const r = await editBusiness(ctx.db, ctx.match[1]!, body, session.user.id);
+      return ok({ changed: r.changed, business: await getBusiness(ctx.db, ctx.match[1]!) });
+    },
+  },
+  {
+    // categoria scelta da una persona, oppure ritorno alla classificazione automatica (category: null)
+    method: 'PUT',
+    pattern: new RegExp(`^/api/businesses/${UUID}/category$`),
+    async handle(ctx) {
+      const session = sessionOf(ctx);
+      const body = parseBody(
+        z.object({ category: z.enum(BUSINESS_CATEGORY_IDS, { error: 'Categoria sconosciuta.' }).nullable() }).strict(),
+        ctx.body,
+      );
+      limit(ctx, `review:${session.user.id}`, RULES.reviewWritesByUser);
+      if (!(await setManualCategory(ctx.db, ctx.match[1]!, body.category, session.user.id)))
+        throw new HttpError(404, 'NOT_FOUND', 'Azienda non trovata.');
       return ok({ business: await getBusiness(ctx.db, ctx.match[1]!) });
     },
   },

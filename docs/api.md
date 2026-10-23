@@ -92,6 +92,27 @@ stessa ricerca), `flaggedForReview`, `skippedIncomplete`, `requestsSent`, `faile
 | `POST /api/businesses/:id/exclusion`           | `{ excluded, reason? }` (motivo max 300 caratteri): esclude o reinclude l'azienda nella prospezione. → `{ business }`.   |
 | `GET /api/businesses/export`                   | CSV con gli stessi filtri e ordinamento di `GET /api/businesses` (senza paginazione). Vedi sotto.                        |
 | `POST /api/businesses/export`                  | `{ ids (1–1.000), format?, fields?, name? }`: aziende selezionate, escluse comprese.                                     |
+| `GET /api/businesses/categories`               | Categorie commerciali con etichette e conteggi reali (stessi filtri dell'elenco): `{ all, pending, categories }`.        |
+| `PUT /api/businesses/:id/category`             | `{ category }`: categoria scelta da una persona; `{ category: null }` torna alla classificazione automatica.             |
+
+Categorie (docs/categorie.md): `GET /api/businesses` accetta anche `businessCategory` (un identificativo canonico,
+oppure `pending` per le aziende non ancora classificate) e `categoryReview=1` (solo le categorie da verificare);
+ordinamenti aggiuntivi `city` e `assessment` (stato della valutazione). `POST /api/hunter/runs` accetta `category` al
+posto di `sectors`: i settori della ricerca sono quelli della categoria.
+
+Google Maps ed email dai siti (docs/google-places.md):
+
+- `POST /api/hunter/runs` accetta `provider` (`osm` predefinito, `google`); `GET /api/hunter/meta` elenca le fonti in
+  `providers` (`id`, `label`, `configured`, `setupHint`), mai le chiavi.
+- `GET /api/businesses` accetta `contactability` (uno o più tra `verificata`, `pubblicata`, `da_verificare`,
+  `da_arricchire`, `nessuna_email`, `sito_non_accessibile`, `senza_sito`), gli ordinamenti `priority` («Priorità:
+  aziende con email disponibile») e `businessCategory`; ogni azienda ha `emailInfo` (stato, provenienza, pagina, data);
+  la scheda ha `websiteEmails` (indirizzi trovati sul sito, con pagina e date).
+- `GET /api/businesses/categories`: i conteggi includono `published` (email pubblicata sul sito) e `toEnrich` (siti
+  da controllare).
+- `POST /api/enrichment/start` `{ scope: 'pending' | 'retry', filters }`: controllo in sottofondo dei siti non ancora
+  controllati, o nuovo tentativo su quelli non accessibili, per le aziende dei filtri indicati (query string di
+  «Trova aziende»); → `{ job, queued, alreadyQueued }` (job di audit).
 
 Parametri di `GET /api/businesses`: `q` (nome, dominio o comune, max 100 caratteri), `region`, `province`,
 `municipality` (codici ISTAT), `category` (uno o più id separati da virgola), `website` (`any`, `yes`, `own` = sito

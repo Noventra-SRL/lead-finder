@@ -16,6 +16,14 @@ export async function openAdvanced(page: Page, label: string) {
   await expect(page.getByRole('heading', { level: 1, name: label })).toBeVisible();
 }
 
+/** Scheda dell'azienda: contatti in cima, poi apre le sezioni secondarie (chiuse per impostazione predefinita). */
+export async function openSections(page: Page) {
+  await expect(page.getByRole('region', { name: 'Contatti' })).toBeVisible();
+  await page
+    .locator('details.biz-section')
+    .evaluateAll((els) => els.forEach((e) => ((e as HTMLDetailsElement).open = true)));
+}
+
 /** Errori del browser: eccezioni JavaScript, errori in console (CSP inclusa), risposte HTTP ≥ 400. */
 export function trackErrors(page: Page): string[] {
   const errors: string[] = [];

@@ -50,6 +50,26 @@ Il **Modello commerciale standard Noventra** è una costante del codice (`server
 generazione lo modifica. Oggetto predefinito: «Un sito web professionale per la tua attività | Noventra». Contatti
 ufficiali: https://www.noventra.it/, staff@noventra.it, 081 091 0236.
 
+### Modello Farmacube (farmacie)
+
+Per le aziende della categoria **Farmacie** la bozza parte dal modello **Farmacube — e-commerce per farmacie**
+(versione 1, `farmacube` in `server/email/template.ts`), oggetto «Una soluzione e-commerce pensata per la sua
+farmacia | Farmacube», con il testo approvato (le parti in grassetto diventano righe normali: le email sono testo
+semplice). Parafarmacie e tutte le altre categorie usano il modello standard Noventra.
+
+- La bozza registra modello e versione (`template_id`, `template_version`, migrazione `0016`); il destinatario è
+  l'email dell'attività salvata sulla scheda.
+- Nell'editor si può scegliere a mano il modello («Modello») e ripristinare in ogni momento il testo ufficiale
+  («Ripristina modello ufficiale»); la versione precedente resta nelle revisioni.
+- Il modello ufficiale resta il predefinito anche con l'AI configurata: il composer rapido non personalizza da solo le
+  farmacie. «Personalizza con AI» cambia solo apertura, un paragrafo di pertinenza e la domanda finale; saluto,
+  presentazione, funzioni di Farmacube, obiettivo, link, consulenza gratuita e firma restano identici.
+- Senza un sito della farmacia verificato non c'è nulla di vero da personalizzare: la richiesta viene rifiutata
+  (`INSUFFICIENT_EVIDENCE`), il fornitore AI non viene chiamato e il testo ufficiale resta invariato.
+- La validazione rifiuta una variante che affermi che la farmacia ha o non ha un sito o un e-commerce, o che citi
+  gestionali, grossisti, fatturato o vendite; l'oggetto deve contenere «Farmacube».
+- All'invio l'attività del CRM registra il modello e la versione usati.
+
 ## Due modalità
 
 | Modalità                    | Cosa cambia                                                                                                                                                                                                                                    |
@@ -100,6 +120,32 @@ dall'AI contengono:
 Un'osservazione sul sito senza prove del sito o dell'audit viene tolta. Le prove usate e le note interne (fatti
 verificati, deduzioni, cose non note) restano nella colonna laterale e **non entrano nel testo dell'email**.
 
+Dalla versione 2 del prompt (`EMAIL_PROMPT_VERSION = 2`) la validazione rifiuta anche:
+
+- una proposta, un'analisi o un preventivo dichiarati «già preparati»;
+- promesse di risultati (clienti, vendite o prenotazioni «garantiti», «aumenterete sicuramente», «raddoppiare»);
+- «ho analizzato / visitato il vostro sito» quando non esiste un rilievo verificato del sito;
+- un servizio principale che non è tra i servizi citati.
+
+### Una email diversa per ogni azienda
+
+Il prompt chiede apertura e pertinenza legate a tipo di attività, città e prove disponibili, con formulazioni varie, e
+**un solo servizio principale** (più uno o due complementari al massimo). Con poche prove (solo nome, categoria e
+città) l'email è una presentazione cortese per il settore, senza osservazioni specifiche.
+
+Ogni bozza AI salva una nota interna «Perché questa email», mostrata nel composer e nell'editor, mai nel testo:
+
+| Campo               | Origine                                                                                                                              |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Sintesi             | Scritta dal modello (1-2 frasi), controllata in lunghezza                                                                            |
+| Servizio principale | Dal catalogo, validato dal server                                                                                                    |
+| Qualità delle prove | Calcolata dal server: **alta** (osservazione sul sito con rilievi e ≥3 prove), **media** (≥2 prove, almeno una specifica), **bassa** |
+| Avvisi              | Calcolati dal server: sito non verificato, prove limitate, osservazione tolta, cose non note                                         |
+| Versione e impronta | `promptVersion`, modello, data di generazione e `evidenceHash` (impronta delle prove usate)                                          |
+
+L'impronta delle prove dice su quale versione dei dati è stata scritta la bozza: se l'audit o i dati dell'azienda
+cambiano, si può decidere di rigenerare. Nulla viene rigenerato da solo.
+
 ### Testi esterni
 
 Nomi, rilievi dei siti e percorsi delle pagine sono dati non attendibili:
@@ -110,7 +156,10 @@ Nomi, rilievi dei siti e percorsi delle pagine sono dati non attendibili:
 
 ### Quando l'AI viene chiamata
 
-Aprire la pagina o una bozza non chiama mai l'AI: si genera solo con «Genera con AI». Se l'AI non è configurata o
+Aprire la pagina o una bozza già esistente non chiama mai l'AI: si genera solo con «Genera con AI», con «Rigenera»
+(composer ed editor) o alla prima apertura del composer rapido per una bozza nuova. Rigenerare chiede conferma se ci
+sono modifiche non salvate; la versione precedente resta nelle revisioni. Il composer offre anche «Copia» (oggetto e
+testo) e «Salva bozza», che non inviano nulla: l'unico invio è «Conferma e invia». Se l'AI non è configurata o
 fallisce, il testo attuale non cambia e il modello standard resta disponibile. Limite: 60 generazioni all'ora per
 utente.
 
@@ -199,12 +248,78 @@ esito incerto», mai «Inviata».
   azienda.
 - Registro delle operazioni: `email.created`, `email.generated`, `email.sent`, `email.send_failed`, `email.verified`.
 
-## Configurazione richiesta per inviare davvero
+## Attivare «Email personalizzata con AI»
 
-1. Credenziali SMTP del dominio noventra.it (o di un provider transazionale con SMTP) in `.env` sul server.
-2. Verifica che il server SMTP possa inviare come staff@noventra.it (SPF e DKIM del dominio), poi
-   `EMAIL_SENDER_AUTHORIZED=si`.
-3. Riavvio del server e «Verifica connessione» dalla pagina (solo amministratori).
+Il messaggio «Personalizzazione AI non configurata sul server» compare quando il server è partito senza chiave del
+fornitore: l'integrazione (Anthropic, SDK ufficiale, solo lato server) è presente, manca la credenziale.
+
+1. Crea una chiave API su console.anthropic.com (account con credito o fatturazione attiva).
+2. Nel file `.env` del server (mai nel frontend, mai nel repository): `AI_API_KEY=<la chiave>`. Facoltativi:
+   `AI_MODEL` (predefinito `claude-opus-5-5`; `claude-sonnet-5-5` o `claude-haiku-5-5` costano meno),
+   `AI_TIMEOUT_SECONDS` (120), `AI_MAX_RETRIES` (3).
+3. **Attenzione ai costi**: con `AI_AUTO_ASSESS=on` la stessa chiave avvia anche la valutazione automatica di tutte
+   le aziende (limite giornaliero `AI_AUTO_DAILY_LIMIT`). Per usare l'AI solo per le email imposta
+   `AI_AUTO_ASSESS=off`.
+4. Riavvia il server (`npm run start:api`). All'avvio la chiave viene verificata leggendo le informazioni del modello
+   (nessun testo generato, nessun costo in token): nel registro compare «fornitore AI raggiungibile, chiave valida»
+   oppure il motivo dell'errore. Gli amministratori possono ripetere la verifica con `POST /api/ai/verify`.
+5. Apri una bozza, scegli «Email personalizzata con AI» e premi «Genera email personalizzata».
+
+Errori mostrati (il testo della bozza non cambia mai in caso di errore):
+
+| Situazione                         | HTTP | Messaggio                                                                             |
+| ---------------------------------- | ---- | ------------------------------------------------------------------------------------- |
+| Chiave assente                     | 503  | Personalizzazione AI non configurata sul server: impostare AI_API_KEY…                |
+| Chiave non valida o senza permessi | 502  | Chiave del fornitore AI non valida o senza permessi: controlla AI_API_KEY…            |
+| Modello inesistente                | 502  | Richiesta rifiutata dal fornitore AI: controlla AI_MODEL                              |
+| Limite di richieste                | 429  | Limite di richieste del fornitore AI raggiunto: riprova più tardi                     |
+| Tempo scaduto                      | 502  | Il fornitore AI non ha risposto in tempo                                              |
+| Fornitore non raggiungibile        | 502  | Fornitore AI non raggiungibile                                                        |
+| Risposta non valida (due volte)    | 422  | Bozza generata non conforme: …                                                        |
+| Generazione già in corso           | 409  | Generazione già in corso per questa email                                             |
+| Poche informazioni sull'azienda    | 200  | Bozza generata e segnalata: qualità delle prove «bassa», presentazione per il settore |
+| Salvataggio non riuscito           | —    | Bozza non salvata: controlla la connessione e riprova                                 |
+
+## Configurazione richiesta per inviare davvero (Google Workspace)
+
+La casella di invio è **staff@noventra.it** su Google Workspace: STARTTLS sulla porta 587, accesso con l'indirizzo
+completo e una **password per le app** (la password normale non funziona).
+
+1. **Password per le app**: con l'account staff@noventra.it, Account Google → Sicurezza → Verifica in due passaggi
+   (attiva) → Password per le app → crea «Noventra Lead Finder». Se la voce non c'è, l'amministratore di Workspace deve
+   consentire le password per le app (Console di amministrazione → Sicurezza) o configurare un relay SMTP.
+2. **Sviluppo (locale)**: nel file `.env` (ignorato da Git; non viene mai sovrascritto dall'applicazione):
+
+   ```
+   SMTP_HOST=smtp.gmail.com
+   SMTP_PORT=587
+   SMTP_SECURE=false
+   SMTP_USER=staff@noventra.it
+   SMTP_PASS=<password per le app, 16 lettere>
+   EMAIL_SENDER=staff@noventra.it
+   EMAIL_SENDER_NAME=Noventra
+   EMAIL_SENDER_AUTHORIZED=si
+   ```
+
+   Sono accettati anche i nomi precedenti (`SMTP_SECURITY`, `SMTP_PASSWORD`, `EMAIL_FROM_ADDRESS`,
+   `EMAIL_FROM_NAME`); due nomi della stessa impostazione con valori diversi fermano l'avvio con un errore. Gli spazi
+   della password per le app mostrata da Google vengono tolti.
+
+3. **Produzione (hosting)**: le stesse variabili nelle variabili d'ambiente del servizio (pannello «Environment» /
+   «Secrets» del provider, o il file di ambiente del servizio systemd con permessi 600), mai nel repository né nel
+   frontend. In produzione SMTP senza cifratura è rifiutato all'avvio.
+4. **Mittente autorizzato**: `EMAIL_SENDER_AUTHORIZED=si` solo dopo aver verificato che il dominio noventra.it ha SPF
+   (`include:_spf.google.com`) e DKIM di Google attivi.
+5. **Riavvio** del server, poi da Impostazioni → «Invio email» (solo amministratori):
+   - «Verifica connessione»: connessione e autenticazione, nessun messaggio inviato → «Connessione verificata» oppure
+     «Errore di autenticazione» / «Errore di connessione»;
+   - «Invia email di prova»: un solo messaggio all'indirizzo scritto e confermato → «Invio di prova riuscito» (il
+     server di Google l'ha accettato; la consegna nella casella non è confermata) oppure «Invio non riuscito». La
+     prova non è un'email commerciale e non entra nel CRM (solo nel registro delle operazioni: `email.test_sent`).
+
+Ogni email parte come testo semplice più la sua versione HTML (generata dal testo: paragrafi, elenchi, link; nessuna
+immagine né tracciamento). Il mittente è sempre quello configurato: una richiesta che prova a indicarne un altro è
+rifiutata.
 
 ## Test
 

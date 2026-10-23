@@ -1,11 +1,29 @@
 import { useEffect, useRef, useState } from 'react';
+import { Bell, House, LogOut, Mail, Search, Settings, type LucideIcon } from 'lucide-react';
 import { Link, Outlet, useLocation } from 'react-router';
 import { useAuth, useUser } from '../auth/AuthContext.tsx';
 import { roleLabel } from '../lib/format.ts';
 import type { AiStatus, EmailList, Reminders } from '../api/client.ts';
 import { useApi } from '../lib/useApi.ts';
-import { ACTIVE_PHASE, isActive, MENU_ITEMS, navIndex } from '../navigation.ts';
+import { ACTIVE_PHASE, isActive, MENU_ITEMS } from '../navigation.ts';
 import { Button, Status } from './ui.tsx';
+
+/** Icona di ogni voce del menu (Lucide, decorativa: il nome resta il testo della voce). */
+const NAV_ICON: Record<string, LucideIcon> = {
+  '/': House,
+  '/trova': Search,
+  '/email': Mail,
+  '/impostazioni': Settings,
+};
+
+/** Iniziali per l'avatar dell'utente (nessuna immagine). */
+const initials = (name: string) =>
+  name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]!.toUpperCase())
+    .join('');
 
 function Brand() {
   return (
@@ -54,7 +72,10 @@ function RemindersIndicator() {
   const r = reminders.data;
   return (
     <Link to="/promemoria" className="reminders-indicator">
-      <span>Promemoria</span>
+      <span className="reminders-indicator__label">
+        <Bell size={16} aria-hidden="true" />
+        Promemoria
+      </span>
       {r && r.unread > 0 ? (
         <span className={`mono ${r.unreadOverdue > 0 ? 'text-danger' : ''}`}>
           {r.unread}
@@ -131,9 +152,12 @@ export function AppShell() {
                     title={item.hint}
                     aria-current={isActive(item, location.pathname) ? 'page' : undefined}
                   >
-                    <span className="nav__num" aria-hidden="true">
-                      {navIndex(item.path)}
-                    </span>
+                    {(() => {
+                      const Icon = NAV_ICON[item.path];
+                      return Icon ? (
+                        <Icon className="nav__icon" size={19} strokeWidth={1.9} aria-hidden="true" />
+                      ) : null;
+                    })()}
                     <span>{item.label}</span>
                     {item.path === '/email' && <EmailReviewBadge />}
                     {item.phase > ACTIVE_PHASE && (
@@ -151,23 +175,28 @@ export function AppShell() {
         <RemindersIndicator />
         <AiIndicator />
         <div className="rail__user">
+          <span className="rail__avatar" aria-hidden="true">
+            {initials(user.displayName)}
+          </span>
           <div className="rail__who">
             <span className="rail__name">{user.displayName}</span>
             <span className="rail__role">
               {roleLabel(user.role)} · {user.email}
             </span>
           </div>
-          <Button
-            variant="ghost"
-            busy={leaving}
-            onClick={() => {
-              setLeaving(true);
-              void logout().finally(() => setLeaving(false));
-            }}
-          >
-            Esci
-          </Button>
         </div>
+        <Button
+          variant="ghost"
+          className="rail__logout"
+          busy={leaving}
+          onClick={() => {
+            setLeaving(true);
+            void logout().finally(() => setLeaving(false));
+          }}
+        >
+          <LogOut size={18} aria-hidden="true" />
+          Esci
+        </Button>
       </aside>
 
       <main className="main" id="contenuto" tabIndex={-1}>

@@ -27,7 +27,8 @@ import { created, HttpError, limit, ok, parseBody, parseQuery, sessionOf, type C
  *  POST /api/businesses/:id/assessment/review  segnalazione o conferma di una persona
  *  POST /api/ai/estimate                       stima prima di un lotto: da valutare, riusate, costo stimato
  *  GET  /api/ai/coverage                       valutazione di ogni azienda: conteggi per stato, coda automatica
- *  POST /api/ai/auto (admin)                   attiva o mette in pausa la valutazione automatica { enabled }
+ *  POST /api/ai/verify (admin)                 verifica chiave e modello senza generare testo (nessun costo)
+ *  POST /api/ai/auto (admin)                  attiva o mette in pausa la valutazione automatica { enabled }
  *  POST /api/ai/coverage/retry-failed · /recheck  errori di nuovo in coda; ricontrollo delle prove di tutte
  *  POST /api/ai/jobs · GET /api/ai/jobs · GET /api/ai/jobs/:id · POST /api/ai/jobs/:id/{pause|resume|cancel}
  */
@@ -88,6 +89,23 @@ export const aiRoutes: Route[] = [
       const body = parseBody(z.object({ enabled: z.boolean() }).strict(), ctx.body);
       await setAutoEnabled(ctx.db, body.enabled, session.user.id);
       return ok({ enabled: body.enabled });
+    },
+  },
+  {
+    method: 'POST',
+    pattern: /^\/api\/ai\/verify$/,
+    access: 'admin',
+    async handle(ctx) {
+      const session = sessionOf(ctx);
+      limit(ctx, `ai-jobs:${session.user.id}`, RULES.aiJobsByUser);
+      requireProvider(ctx);
+      try {
+        const r = await ctx.state.ai.provider!.verify();
+        return ok({ ok: true, model: r.model, message: 'Chiave valida: il fornitore AI risponde.' });
+      } catch (error) {
+        // esito della verifica, non un errore della richiesta: il messaggio è già sicuro (nessun segreto)
+        return ok({ ok: false, model: ctx.state.ai.config.model, message: (error as Error).message });
+      }
     },
   },
   {

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { expectAccessible, signInAsAdmin, trackErrors, expectHome, openAdvanced } from './helpers.ts';
+import { expectAccessible, signInAsAdmin, trackErrors, expectHome, openAdvanced, openSections } from './helpers.ts';
 import { E2E_AUDIT_BUSINESSES, E2E_USERS } from './users.ts';
 
 /*
@@ -15,6 +15,7 @@ async function open(page: Page, name: string) {
   await page.goto(`/aziende?q=${encodeURIComponent(name)}`);
   await page.getByRole('link', { name }).click();
   await expect(page.getByRole('heading', { level: 1, name })).toBeVisible();
+  await openSections(page);
   return page.getByRole('region', { name: 'Servizi Noventra consigliati' });
 }
 

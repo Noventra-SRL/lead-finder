@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
-import { expectAccessible, signInAsAdmin, trackErrors, expectHome, openAdvanced } from './helpers.ts';
+import { expectAccessible, signInAsAdmin, trackErrors, expectHome, openAdvanced, openSections } from './helpers.ts';
 import { E2E_USERS } from './users.ts';
 
 /*
@@ -31,6 +31,7 @@ test('follow-up dalla scheda azienda: conferma prima di aggiungerla al CRM', asy
   await page.goto('/aziende?q=bar%20di%20prova%20albano');
   await page.getByRole('link', { name: BAR, exact: true }).click();
   await expect(page.getByRole('heading', { level: 1, name: BAR })).toBeVisible();
+  await openSections(page);
   await page.locator('summary', { hasText: 'Pianifica un follow-up' }).click();
   const form = page.getByRole('form', { name: 'Nuovo follow-up' });
   await form.getByLabel('Azione').fill(ACTION);

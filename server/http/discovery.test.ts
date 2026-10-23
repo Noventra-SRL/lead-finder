@@ -211,7 +211,13 @@ describe('ricerca completa', () => {
       }),
     ]);
     // Fase 6: il telefono pubblico dell'attività è nei recapiti, mai nei tag di provenienza
-    expect(detail.contacts).toEqual({ phone: '+39 000 0000000', email: null, emailKind: null });
+    expect(detail.contacts).toEqual({
+      phone: '+39 000 0000000',
+      email: null,
+      emailKind: null,
+      fax: null,
+      phonesExtra: [],
+    });
     expect(JSON.stringify(detail.sources)).not.toContain('0000000');
     expect(detail.history[0]).toMatchObject({ action: 'business.created' });
   });

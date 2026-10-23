@@ -75,13 +75,13 @@ npm run dev                   # interfaccia con Vite (ricarica automatica)
 L'elenco completo, con i valori predefiniti, è in `.env.example`; un test verifica che documenti ogni variabile letta
 dal server.
 
-| Gruppo          | Obbligatorie in produzione                                              | Note                                                                                                            |
-| --------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| Base            | `NODE_ENV=production`, `DATABASE_URL`, `APP_ORIGIN` (https)             | `API_HOST`, `API_PORT`, `TRUST_PROXY`, `LOG_LEVEL`, `SESSION_*` facoltative                                     |
-| Ricerca aziende | `DISCOVERY_OVERPASS_URL`, `DISCOVERY_CONTACT`                           | istanza Overpass propria consigliata; altre `DISCOVERY_*` facoltative                                           |
-| Audit dei siti  | —                                                                       | `AUDIT_*` facoltative; `PAGESPEED_API_KEY` per le prestazioni                                                   |
-| Valutazione AI  | `AI_API_KEY`                                                            | `AI_MODEL`, `AI_EFFORT`, `AI_CONCURRENCY`, `AI_AUTO_ASSESS`, `AI_AUTO_DAILY_LIMIT`, `AI_PROVIDER`, `AI_PRICE_*` |
-| Email           | `SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD`, `EMAIL_SENDER_AUTHORIZED=si` | `SMTP_PORT`, `SMTP_SECURITY`, `EMAIL_FROM_*`, `EMAIL_REPLY_TO`                                                  |
+| Gruppo          | Obbligatorie in produzione                                                              | Note                                                                                                                                               |
+| --------------- | --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Base            | `NODE_ENV=production`, `DATABASE_URL`, `APP_ORIGIN` (https)                             | `API_HOST`, `API_PORT`, `TRUST_PROXY`, `LOG_LEVEL`, `SESSION_*` facoltative                                                                        |
+| Ricerca aziende | `DISCOVERY_OVERPASS_URL`, `DISCOVERY_CONTACT`                                           | istanza Overpass propria consigliata; altre `DISCOVERY_*` facoltative                                                                              |
+| Audit dei siti  | —                                                                                       | `AUDIT_*` facoltative; `PAGESPEED_API_KEY` per le prestazioni                                                                                      |
+| Valutazione AI  | `AI_API_KEY`                                                                            | `AI_MODEL`, `AI_EFFORT`, `AI_CONCURRENCY`, `AI_AUTO_ASSESS`, `AI_AUTO_DAILY_LIMIT`, `AI_PROVIDER`, `AI_PRICE_*`                                    |
+| Email           | `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS` (o `SMTP_PASSWORD`), `EMAIL_SENDER_AUTHORIZED=si` | `SMTP_PORT`, `SMTP_SECURE` (o `SMTP_SECURITY`), `EMAIL_SENDER*` (o `EMAIL_FROM_*`), `EMAIL_REPLY_TO` — Google Workspace: docs/email-commerciali.md |
 
 Variabili **solo per i test** (rifiutate fuori da `NODE_ENV=test`): `AI_TEST_BASE_URL`, `AUDIT_TEST_LOOPBACK_PORTS`.
 Con `NODE_ENV=test` il server rifiuta anche SMTP non locali e chiavi AI senza il server finto: i test non possono

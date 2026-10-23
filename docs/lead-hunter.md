@@ -49,6 +49,30 @@ scelti:
 - **con problemi del sito documentati**: sito raggiungibile con almeno un rilievo grave o almeno 3 rilievi utili
   nell'ultimo audit;
 - **punteggio minimo**: conta solo dopo il calcolo; un'azienda senza punteggio non conta.
+- **solo aziende con un'email pubblica** (`options.publicEmail`): l'azienda ha un'email dell'attività trovata in una
+  fonte pubblica, con la pagina di provenienza: indicata dalla scheda OpenStreetMap (`email_source = osm`, link al
+  nodo) oppure scritta sul suo sito (`website`, link alla pagina). Un'email inserita a mano non conta.
+
+### Ricerche di aziende con email pubblica
+
+- **Scoperta**: la query chiede alla fonte solo le attività con un sito o un'email nei tag
+  (`[~"^(website|contact:website|url|email|contact:email)$"~"."]`), così il limite per comune non viene consumato da
+  attività senza recapiti; il salvataggio scarta comunque quelle senza sito proprio né email (solo una pagina social
+  non basta).
+- **Email dalla fonte**: si conservano gli indirizzi generici (info@, prenotazioni@…) e quelli con il nome
+  dell'attività nella parte locale (almeno due parole significative del nome: «pizzeriadamario@…» per «Pizzeria da
+  Mario» sì, «mario.rossi@…» no). Gli indirizzi che sembrano personali non vengono mai salvati.
+- **Email dai siti**: le verifiche dei siti girano insieme alla scoperta (prima i siti delle aziende ancora senza
+  email), leggono le pagine di contatto nel rispetto di robots.txt e dei limiti per sito, e salvano l'indirizzo con la
+  pagina. Le misure di velocità sono disattivate per non rallentarle.
+- **Quando fermarsi**: la scoperta si ferma quando le aziende con email più quelle attese dai siti ancora da
+  controllare (quota misurata sui siti già controllati di questa ricerca, 30% finché ne sono stati controllati meno di 20) raggiungono l'obiettivo, oppure quando le candidate arrivano a 8 volte l'obiettivo, oppure quando le aree sono
+  finite. La ricerca termina dopo l'ultima verifica e dichiara il numero reale.
+- **Verifica dell'email**: il dominio viene controllato via DNS (MX, altrimenti A/AAAA) da un processo in sottofondo;
+  nessun messaggio di prova viene inviato. Livelli mostrati nella scheda: pubblicata in una fonte pubblica, dominio che
+  riceve posta, consegna verificata (mai automatica). Un dominio valido non prova che la casella esista.
+- Trovare un'email pubblica **non autorizza** l'invio di comunicazioni commerciali: l'invio resta manuale, con la
+  conferma e i controlli di «non contattare».
 
 Tutti i numeri mostrati (raccolte, nuove, siti, verifiche, punteggi, distribuzione) sono letti dal database a ogni
 richiesta: non sono contatori separati che possano divergere dai dati.

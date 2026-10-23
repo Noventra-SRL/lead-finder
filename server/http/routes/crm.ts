@@ -181,6 +181,8 @@ export function crmFiltersFrom(params: URLSearchParams, userId: string): CrmFilt
       sectors: q.sector,
       categories: q.category.filter(isCategoryId),
       review: q.review === '1',
+      categoryReview: q.categoryReview === '1',
+      doNotContact: q.doNotContact === undefined ? undefined : q.doNotContact === '1',
     },
     stages: q.stage,
     priorities: q.crmPriority as PriorityId[],

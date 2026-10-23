@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { expectAccessible, signInAsAdmin, trackErrors, expectHome, openAdvanced } from './helpers.ts';
+import { expectAccessible, signInAsAdmin, trackErrors, expectHome, openAdvanced, openSections } from './helpers.ts';
 import { E2E_USERS } from './users.ts';
 
 /*
@@ -132,6 +132,7 @@ test('scheda dell’azienda: apre l’opportunità aperta invece di crearne un�
   await page.goto('/aziende?q=trattoria%20di%20prova%20albano');
   await page.getByRole('link', { name: TRATTORIA, exact: true }).click();
   await expect(page.getByText('Nel CRM:')).toContainText('Da contattare');
+  await openSections(page);
   await page.getByRole('link', { name: 'Apri l’opportunità' }).click();
   await expect(page.getByRole('heading', { level: 1, name: TRATTORIA })).toBeVisible();
   expect(errors).toEqual([]);

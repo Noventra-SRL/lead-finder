@@ -44,7 +44,10 @@ export type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 /** Servizi della scoperta di aziende disponibili alle rotte. */
 export interface DiscoveryServices {
+  /** Fornitore predefinito (OpenStreetMap): ricerche manuali e ricerche di lead senza fornitore indicato. */
   provider: DiscoveryProvider;
+  /** Fornitori aggiuntivi per le ricerche di lead (es. Google Places), per identificativo. */
+  extraProviders?: DiscoveryProvider[];
   config: DiscoveryConfig;
   /** Avvisa l'esecutore che c'è una ricerca da eseguire (no-op se l'esecutore è disattivato). */
   wake(): void;

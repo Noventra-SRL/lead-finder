@@ -51,11 +51,27 @@ test('da «Trova aziende»: messaggio pronto, rifiuto del server con messaggio i
   const send = dialog.getByRole('button', { name: 'Conferma e invia' });
   await expect(send).toBeEnabled();
   await expect(dialog.getByText(/conferma che hai riletto il messaggio e che il contatto è lecito/)).toBeVisible();
+  // nota interna accanto al testo (mai nell'email): sintesi, servizio principale, qualità delle prove
+  const why = dialog.getByRole('region', { name: 'Perché questa email' });
+  await expect(why).toContainText('nota interna, non inviata');
+  await expect(why).toContainText('Servizio principale');
+  await expect(why).toContainText('Qualità delle prove');
+  await expect(dialog.getByLabel('Testo')).not.toHaveValue(/Perché questa email|Qualità delle prove/);
   await expectAccessible(page, 'composer');
 
-  // modifica facoltativa del testo; un destinatario rifiutato dal server: il messaggio resta com'è, si può riprovare
+  // rigenerazione su richiesta: nuova versione, nessun invio
+  await dialog.getByRole('button', { name: 'Rigenera' }).click();
+  await expect(dialog.getByText(/Nuova versione personalizzata: rileggila prima di inviare/)).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Copia', exact: true })).toBeEnabled();
+
+  // modifica facoltativa del testo, salvata come bozza; un destinatario rifiutato dal server: il messaggio resta
+  // com'è, si può riprovare
   const body = dialog.getByLabel('Testo');
+  const saveDraft = dialog.getByRole('button', { name: 'Salva bozza' });
+  await expect(saveDraft).toBeDisabled();
   await body.fill(`${await body.inputValue()}\n\n${ADDED}`);
+  await saveDraft.click();
+  await expect(dialog.getByText('Bozza salvata. Nessuna email è stata inviata.')).toBeVisible();
   await dialog.getByLabel('Destinatario').fill('rifiuta@dentista-prova.example.it');
   await send.click();
   await expect(dialog.getByText(/Il messaggio è salvato: puoi correggerlo e riprovare\./)).toBeVisible();
@@ -110,8 +126,8 @@ test('dopo l’invio: «In attesa», attività nel CRM, trattativa avanzata, un 
   expect(home.sales.emailsSent).toBe(before.emailsSent + 1);
   expect(home.sales.awaitingReply).toBe(before.awaitingReply + 1);
   const kpis = page.getByRole('list', { name: 'Numeri principali' });
-  await expect(kpis.getByRole('listitem').filter({ hasText: 'Email inviate' }).locator('.kpi__value')).toHaveText(
-    String(home.sales.emailsSent),
+  await expect(kpis.getByRole('listitem').filter({ hasText: 'Email inviate' }).locator('.dash-kpi__value')).toHaveText(
+    Number(home.sales.emailsSent).toLocaleString('it-IT', { useGrouping: 'always' } as Intl.NumberFormatOptions),
   );
   expect(errors).toEqual([]);
 });
@@ -127,22 +143,41 @@ test('senza email o da non contattare: «Invia email» disattivato', async ({ pa
   await expect(noEmail).toContainText('Email non disponibile');
   await expect(noEmail.getByRole('button', { name: /^Invia email a / })).toBeDisabled();
 
-  // esclusa dalla prospezione: lo stato è «Non contattare» e l'invio è bloccato (anche dal server)
+  // rifiuto commerciale: esclusa e con divieto di contatto; reinclusa, il divieto resta e l'invio resta bloccato
   await page.goto(`/trova?q=${encodeURIComponent(name)}`);
   await row(page)
     .first()
     .getByRole('link', { name: `Dettagli di ${name}` })
     .click();
-  await page.getByRole('button', { name: 'Escludi dalla prospezione' }).click();
-  await page.getByRole('button', { name: 'Escludi', exact: true }).click();
+  await page.getByRole('button', { name: 'Gestisci contatto' }).click();
+  const manage = page.getByRole('dialog', { name: 'Gestisci contatto' });
+  await manage.getByRole('radio', { name: /^Rifiuto commerciale/ }).check();
+  await expect(manage.getByRole('radio', { name: /^Tutti i canali/ })).toBeChecked();
+  // annullare non cambia nulla
+  await manage.getByRole('button', { name: 'Annulla' }).click();
+  await expect(page.getByRole('button', { name: 'Invia email' })).toBeEnabled();
+  await page.getByRole('button', { name: 'Gestisci contatto' }).click();
+  await manage.getByRole('radio', { name: /^Rifiuto commerciale/ }).check();
+  await manage.getByRole('button', { name: 'Conferma l’esclusione' }).click();
+  await expect(page.locator('.notice__title', { hasText: 'Contatto vietato' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Invia email' })).toBeDisabled();
-  await page.goto(`/trova?q=${encodeURIComponent(name)}&contactStatus=non_contattare`);
+  // «Aziende escluse» in «Trova aziende»
+  await page.goto(`/trova?q=${encodeURIComponent(name)}&escluse=1`);
   const excluded = row(page).first();
   await expect(excluded).toContainText('Non contattare');
   await expect(excluded.getByRole('button', { name: `Invia email a ${name}` })).toBeDisabled();
-  // ripristino
+  // riportata tra i potenziali clienti: il divieto di contatto resta
   await excluded.getByRole('link', { name: `Dettagli di ${name}` }).click();
-  await page.getByRole('button', { name: 'Includi di nuovo' }).click();
-  await expect(page.getByRole('button', { name: 'Invia email' })).toBeEnabled();
+  await page.getByRole('button', { name: 'Gestisci contatto' }).click();
+  await expect(manage.getByText(/Il divieto di contatto resta attivo/)).toBeVisible();
+  await manage.getByRole('button', { name: 'Riporta tra i potenziali clienti' }).click();
+  await expect(page.locator('.notice__title', { hasText: 'Contatto vietato' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Invia email' })).toBeDisabled();
+  // anche chiamando l'API direttamente: nessuna bozza
+  const api = await page.request.post('/api/emails', {
+    data: { requestId: crypto.randomUUID(), businessId: page.url().split('/').pop() },
+    headers: { Origin: new URL(page.url()).origin },
+  });
+  expect(api.status()).toBe(409);
   expect(errors).toEqual([]);
 });

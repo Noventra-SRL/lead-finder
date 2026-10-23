@@ -13,6 +13,10 @@ export const E2E_FAKE_SITE_PORTS = { good: 8813, poor: 8814, closed: 8815 };
 export const E2E_FAKE_AI_PORT = 8816;
 /** Server SMTP finto (solo test): riceve i messaggi su 127.0.0.1, nessuna email reale. */
 export const E2E_FAKE_SMTP_PORT = 8817;
+/** Server Google Places finto (solo test): attività inventate, nessuna richiesta a Google, nessun costo. */
+export const E2E_FAKE_PLACES_PORT = 8818;
+/** Email scritta sulla pagina dei contatti del sito finto della farmacia (indirizzo di prova). */
+export const E2E_SITE_EMAIL = 'info.prova@gmail.com';
 
 /** Aziende di prova collegate ai siti finti (provincia di Trieste: fuori dalle aree usate dai test della scoperta). */
 export const E2E_AUDIT_BUSINESSES = {

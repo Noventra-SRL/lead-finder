@@ -11,6 +11,7 @@ import {
   type EmailSendResult,
 } from '../api/client.ts';
 import { formatDateTime } from '../lib/format.ts';
+import { EmailRationale } from './EmailRationale.tsx';
 import { Button, Checkbox, Field, Loading, TextAreaField } from './ui.tsx';
 
 /*
@@ -51,6 +52,9 @@ export function EmailComposer({
   const [error, setError] = useState<ApiError | null>(null);
   const [acceptUncertain, setAcceptUncertain] = useState(false);
   const [result, setResult] = useState<EmailSendResult | null>(null);
+  const [busy, setBusy] = useState<'regenerate' | 'save' | null>(null);
+  const [confirmRegen, setConfirmRegen] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
 
   useEffect(() => {
     ref.current?.showModal();
@@ -77,7 +81,10 @@ export function EmailComposer({
         load(created);
         let current = created;
         const fresh = created.email.mode === 'standard' && !created.email.editedAfterGeneration;
-        if (m.aiConfigured && fresh && created.email.status === 'draft') {
+        // Farmacube: il testo ufficiale resta il predefinito anche con l'AI configurata (personalizzazione su richiesta)
+        const official = created.email.templateId === 'farmacube';
+        if (official && fresh) setNote(`Modello ufficiale «${created.email.templateName}».`);
+        else if (m.aiConfigured && fresh && created.email.status === 'draft') {
           setPhase('personalizing');
           try {
             current = await post<EmailDetail>(`/emails/${created.email.id}/generate`, {
@@ -99,7 +106,9 @@ export function EmailComposer({
             );
           }
         } else if (!m.aiConfigured && fresh) {
-          setNote('Modello standard Noventra (personalizzazione AI non configurata sul server).');
+          setNote(
+            'Modello standard Noventra: personalizzazione AI non configurata sul server (l’amministratore deve impostare AI_API_KEY e riavviare il server).',
+          );
         }
         const c = await get<EmailPrecheck>(`/emails/${current.email.id}/precheck`);
         if (cancelled) return;
@@ -142,6 +151,70 @@ export function EmailComposer({
   ];
   const blockers = [...serverBlockers, ...localBlockers];
   const canSend = phase === 'ready' && Boolean(e) && blockers.length === 0 && (!e!.failureUncertain || acceptUncertain);
+
+  // rigenerazione su richiesta: una nuova chiamata all'AI solo con questo clic; se fallisce il testo attuale resta
+  const regenerate = async (mode: 'ai' | 'standard' = 'ai') => {
+    if (!e) return;
+    if (dirty && !confirmRegen) {
+      setConfirmRegen(true);
+      return;
+    }
+    setConfirmRegen(false);
+    setBusy('regenerate');
+    setError(null);
+    setStatus(null);
+    try {
+      const r = await post<EmailDetail>(`/emails/${e.id}/generate`, {
+        version: e.version,
+        mode,
+        objective: 'presentazione',
+        tone: 'consulenziale',
+        overwrite: true,
+      });
+      load(r);
+      setNote(
+        mode === 'ai'
+          ? 'Nuova versione personalizzata: rileggila prima di inviare. La precedente resta nelle revisioni.'
+          : `Modello ufficiale ripristinato («${r.email.templateName}»). La versione precedente resta nelle revisioni.`,
+      );
+      setCheck(await get<EmailPrecheck>(`/emails/${e.id}/precheck`));
+    } catch (err) {
+      setError(errorOf(err, 'Rigenerazione non riuscita: il testo attuale è invariato.'));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const saveDraft = async () => {
+    if (!e) return;
+    setBusy('save');
+    setError(null);
+    setStatus(null);
+    try {
+      const saved = await patch<EmailDetail>(`/emails/${e.id}`, {
+        version: e.version,
+        recipient: recipient.trim(),
+        subject,
+        body,
+      });
+      load(saved);
+      setStatus('Bozza salvata. Nessuna email è stata inviata.');
+      setCheck(await get<EmailPrecheck>(`/emails/${e.id}/precheck`));
+    } catch (err) {
+      setError(errorOf(err, 'Bozza non salvata.'));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const copyEmail = async () => {
+    try {
+      await navigator.clipboard.writeText(`Oggetto: ${subject}\n\n${body}`);
+      setStatus('Oggetto e testo copiati.');
+    } catch {
+      setStatus('Copia non riuscita: seleziona il testo e copialo a mano.');
+    }
+  };
 
   const confirmAndSend = async () => {
     if (!e) return;
@@ -209,6 +282,11 @@ export function EmailComposer({
             <>
               {phase === 'personalizing' && <Loading label="Personalizzazione con le informazioni sull’azienda…" />}
               {note && <p className="small muted">{note}</p>}
+              <p className="small">
+                Modello: <strong>{e.templateName}</strong>
+                {e.mode === 'ai' ? ' · personalizzato con AI' : ' · testo ufficiale'}
+              </p>
+              {d && <EmailRationale email={e} catalog={d.catalog} compact />}
               <Field
                 label="Destinatario"
                 type="email"
@@ -240,6 +318,56 @@ export function EmailComposer({
                 disabled={phase !== 'ready'}
                 onChange={(ev) => setBody(ev.target.value)}
               />
+              <div className="row composer__tools">
+                {meta?.aiConfigured && (
+                  <Button
+                    variant="secondary"
+                    type="button"
+                    busy={busy === 'regenerate'}
+                    disabled={phase !== 'ready' || busy !== null}
+                    onClick={() => void regenerate()}
+                  >
+                    {confirmRegen
+                      ? 'Sostituisci le modifiche e rigenera'
+                      : e.mode === 'ai'
+                        ? 'Rigenera'
+                        : 'Personalizza con AI'}
+                  </Button>
+                )}
+                {(e.mode === 'ai' || e.editedAfterGeneration || dirty) && (
+                  <Button
+                    variant="ghost"
+                    type="button"
+                    disabled={phase !== 'ready' || busy !== null}
+                    onClick={() => void regenerate('standard')}
+                  >
+                    Ripristina modello ufficiale
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  type="button"
+                  busy={busy === 'save'}
+                  disabled={phase !== 'ready' || busy !== null || !dirty}
+                  onClick={() => void saveDraft()}
+                >
+                  Salva bozza
+                </Button>
+                <Button variant="ghost" type="button" disabled={phase === 'loading'} onClick={() => void copyEmail()}>
+                  Copia
+                </Button>
+              </div>
+              {confirmRegen && (
+                <p className="small" role="alert">
+                  Hai modifiche non salvate: la rigenerazione le sostituisce.{' '}
+                  <button type="button" className="link-button small" onClick={() => setConfirmRegen(false)}>
+                    Annulla
+                  </button>
+                </p>
+              )}
+              <p className="small muted" aria-live="polite">
+                {dirty ? 'Modifiche non salvate.' : (status ?? '')}
+              </p>
               {blockers.length > 0 && (
                 <ul className="composer__blockers" role="alert">
                   {blockers.map((b) => (

@@ -7,6 +7,7 @@ import type { Logger } from '../logger.ts';
 import { HttpError, type AppState, type Context, type Reply, type Route } from './core.ts';
 import { JobError } from '../discovery/jobs.ts';
 import { auditRoutes } from './routes/audits.ts';
+import { enrichmentRoutes } from './routes/enrichment.ts';
 import { aiRoutes } from './routes/ai.ts';
 import { authRoutes } from './routes/auth.ts';
 import { crmRoutes } from './routes/crm.ts';
@@ -41,6 +42,7 @@ export const routes: Route[] = [
   ...discoveryRoutes,
   ...businessRoutes,
   ...auditRoutes,
+  ...enrichmentRoutes,
   ...scoringRoutes,
   ...serviceRoutes,
   ...hunterRoutes,
@@ -225,16 +227,20 @@ export function createApp(db: Db, options: AppOptions) {
     } catch (error) {
       let e: HttpError;
       if (error instanceof HttpError) e = error;
-      else if (error instanceof JobError)
+      else if (error instanceof JobError) {
+        // errori per campo (data.fields) nello stesso posto degli errori di validazione delle rotte
+        const { fields, ...data } = (error.data ?? {}) as { fields?: Record<string, string> };
         e = new HttpError(
           error.status,
           error.code,
           error.message,
+          fields,
           undefined,
-          undefined,
-          error.jobId || error.data ? { ...(error.jobId ? { jobId: error.jobId } : {}), ...error.data } : undefined,
+          error.jobId || Object.keys(data).length
+            ? { ...(error.jobId ? { jobId: error.jobId } : {}), ...data }
+            : undefined,
         );
-      else if (error instanceof URIError) e = new HttpError(400, 'INVALID_PATH', 'Indirizzo non valido.');
+      } else if (error instanceof URIError) e = new HttpError(400, 'INVALID_PATH', 'Indirizzo non valido.');
       else if (isDatabaseUnavailable(error)) {
         e = new HttpError(
           503,

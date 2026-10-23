@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { expectAccessible, signInAsAdmin, trackErrors, expectHome, openAdvanced } from './helpers.ts';
+import { expectAccessible, signInAsAdmin, trackErrors, expectHome, openAdvanced, openSections } from './helpers.ts';
 import { E2E_AUDIT_BUSINESSES, E2E_FAKE_SITE_PORTS, E2E_USERS } from './users.ts';
 
 /*
@@ -87,6 +87,7 @@ test('scheda azienda: stato del sito, storico e ripetizione dell’audit', async
   const errors = trackErrors(page);
   await openLeads(page, '?q=farmacia%20audit');
   await page.getByRole('link', { name: E2E_AUDIT_BUSINESSES.good }).click();
+  await openSections(page);
   const section = page.getByRole('region', { name: 'Sito web e audit' });
   await expect(section.getByText('Raggiungibile', { exact: true })).toBeVisible();
   await expect(section.getByRole('list', { name: 'Storico degli audit' }).getByRole('listitem')).toHaveCount(1);
@@ -95,6 +96,7 @@ test('scheda azienda: stato del sito, storico e ripetizione dell’audit', async
   await expect(page).toHaveURL(/\/audit\/verifiche\//);
   await expect(jobState(page, 'Completata')).toBeVisible({ timeout: 30_000 });
   await page.getByRole('link', { name: E2E_AUDIT_BUSINESSES.good }).click();
+  await openSections(page);
   await expect(
     page
       .getByRole('region', { name: 'Sito web e audit' })
@@ -109,6 +111,7 @@ test('sito irraggiungibile: stato chiaro e motivo tecnico, mai un errore della p
   await openLeads(page, '?audit=unavailable');
   await expect(page.getByText('1 azienda', { exact: true })).toBeVisible();
   await page.getByRole('link', { name: E2E_AUDIT_BUSINESSES.down }).click();
+  await openSections(page);
   await expect(
     page.getByRole('region', { name: 'Sito web e audit' }).getByText('Irraggiungibile', { exact: true }),
   ).toBeVisible();

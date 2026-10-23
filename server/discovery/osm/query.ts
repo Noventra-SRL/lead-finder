@@ -30,14 +30,23 @@ function selectorsFor(categories: CategoryId[], areaSet: string): string {
  * L'area del comune viene letta una volta per chiave OSM (amenity, shop, office…) in un insieme di candidati;
  * i settori filtrano poi quell'insieme in memoria sul server, senza rileggere l'area.
  */
-function sectorBlocks(sectors: Sector[], areaSet: string, limit: number, radius?: { meters: number }): string {
+/** Solo elementi con un sito o un'email nei tag: il limite per comune conta solo le attività con un recapito. */
+const CONTACT_FILTER = '[~"^(website|contact:website|url|email|contact:email)$"~"."]';
+
+function sectorBlocks(
+  sectors: Sector[],
+  areaSet: string,
+  limit: number,
+  radius?: { meters: number },
+  contact = '',
+): string {
   const prefilters = keyPrefilters(sectors.flatMap((sec) => sec.selectors));
   const candidates = `(
     ${prefilters.map((f) => `nwr${f}(area.${areaSet});`).join('\n    ')}
   )->.candidati;`;
   const blocks = sectors
     .map((sec) => {
-      const sel = sec.selectors.map((x) => `nwr.candidati${overpassFilter(x)};`).join('\n    ');
+      const sel = sec.selectors.map((x) => `nwr.candidati${overpassFilter(x)}${contact};`).join('\n    ');
       if (!radius)
         return `(
     ${sel}
@@ -62,7 +71,9 @@ export function buildUnitQuery(
   limitPerArea: number,
   options: QueryOptions,
   sectors?: Sector[],
+  filters: { requireContact?: boolean } = {},
 ): string {
+  const contact = filters.requireContact ? CONTACT_FILTER : '';
   const codes = unit.municipalities.map((m) => m.code);
   for (const c of codes) if (!/^\d{6}$/.test(c)) throw new Error(`Codice ISTAT non valido: ${c}`);
   if (!codes.length) throw new Error('Unità senza comuni');
@@ -79,7 +90,7 @@ foreach.comuni->.c(
   .c out tags;
   ${
     sectors?.length
-      ? sectorBlocks(sectors, 'c', limitPerArea)
+      ? sectorBlocks(sectors, 'c', limitPerArea, undefined, contact)
       : `(
     ${selectorsFor(categories, 'c')}
   );
@@ -100,7 +111,7 @@ foreach.comuni->.c(
   .c out tags;
   ${
     sectors?.length
-      ? sectorBlocks(sectors, 'c', limitPerArea, { meters })
+      ? sectorBlocks(sectors, 'c', limitPerArea, { meters }, contact)
       : `(
     ${selectorsFor(categories, 'c')}
   )->.trovati;

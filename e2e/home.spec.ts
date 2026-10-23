@@ -28,16 +28,25 @@ test('home: quattro domande con numeri reali, migliori prospect con «Invia emai
     ['Email inviate', home.sales.emailsSent],
     ['In attesa di risposta', home.sales.awaitingReply],
   ] as const)
-    await expect(kpis.getByRole('listitem').filter({ hasText: label }).locator('.kpi__value')).toHaveText(
-      Number(value).toLocaleString('it-IT'),
+    await expect(kpis.getByRole('listitem').filter({ hasText: label }).locator('.dash-kpi__value')).toHaveText(
+      Number(value).toLocaleString('it-IT', { useGrouping: 'always' } as Intl.NumberFormatOptions),
     );
 
-  // migliori prospect: da contattare, con email, ognuno con «Invia email»
-  if (home.sales.bestProspects.length > 0) {
-    const best = page.getByRole('table', { name: 'Migliori prospect da contattare' });
-    await expect(best.getByRole('row')).toHaveCount(home.sales.bestProspects.length + 1);
-    await expect(best.getByRole('button', { name: /^Invia email a / })).toHaveCount(home.sales.bestProspects.length);
-  } else await expect(page.getByText('Nessuna azienda da contattare con un’email disponibile.')).toBeVisible();
+  // migliori prospect: aziende contattabili (né escluse né con divieto), per punteggio, 10 per pagina dal server
+  const api = await (
+    await page.request.get('/api/businesses?doNotContact=0&sort=commercial&dir=desc&page=1&pageSize=10')
+  ).json();
+  const best = page.getByRole('table', { name: 'Migliori prospect da contattare' });
+  if (api.total > 0) {
+    await expect(best.getByRole('row')).toHaveCount(Math.min(10, api.total) + 1);
+    await expect(best.getByRole('button', { name: /^Invia email a / })).toHaveCount(Math.min(10, api.total));
+    await expect(best.getByRole('row').nth(1)).toContainText(api.items[0].name);
+    await expect(
+      page.getByText(
+        `${Number(api.total).toLocaleString('it-IT', { useGrouping: 'always' } as Intl.NumberFormatOptions)} ${api.total === 1 ? 'risultato' : 'risultati'}`,
+      ),
+    ).toBeVisible();
+  } else await expect(page.getByText('Ancora nessuna azienda')).toBeVisible();
   await expectAccessible(page, 'home');
 
   // le azioni portano alle due schermate di lavoro; ogni numero apre l'elenco che lo spiega

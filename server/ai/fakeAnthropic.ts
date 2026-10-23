@@ -14,6 +14,20 @@ export async function startFakeAnthropic(port = 0): Promise<{ url: string; reque
     let raw = '';
     req.on('data', (c) => (raw += c));
     req.on('end', () => {
+      // verifica della chiave (GET /v1/models/:id): nessuna generazione, non conta come richiesta
+      const modelInfo = /^\/v1\/models\/([^/?]+)/.exec(req.url ?? '');
+      if (req.method === 'GET' && modelInfo) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            type: 'model',
+            id: modelInfo[1],
+            display_name: 'Modello di prova',
+            created_at: '2026-01-01T00:00:00Z',
+          }),
+        );
+        return;
+      }
       state.requests++;
       const body = JSON.parse(raw || '{}') as { model?: string; messages?: { content: string }[] };
       const user = body.messages?.[0]?.content ?? '';
@@ -35,12 +49,21 @@ export async function startFakeAnthropic(port = 0): Promise<{ url: string; reque
       // email commerciale (Fase 9): testo generico, osservazione sul sito solo se c'è un rilievo F1
       const emailData = /<dati_email>\n([\s\S]*)\n<\/dati_email>/.exec(user)?.[1];
       if (emailData) {
-        const d = JSON.parse(emailData) as { prove?: { id: string }[]; catalogo_servizi_noventra?: { id: string }[] };
+        const d = JSON.parse(emailData) as {
+          prove?: { id: string; testo?: string }[];
+          catalogo_servizi_noventra?: { id: string }[];
+        };
         const has = new Set((d.prove ?? []).map((p) => p.id));
+        // apertura legata alla categoria indicata nelle prove (B1): aziende diverse → email diverse
+        const categoria = /Categoria: ([^.]+)\./.exec(d.prove?.find((p) => p.id === 'B1')?.testo ?? '')?.[1];
+        const service = d.catalogo_servizi_noventra?.[0]?.id ?? null;
         reply({
-          subject: 'Una proposta per la presenza online della vostra attività | Noventra',
-          opening:
-            'Ho visto la scheda pubblica della vostra attività e credo che una presenza online curata possa aiutarvi a farvi trovare da chi cerca i vostri servizi nella vostra zona.',
+          subject: categoria
+            ? `Presenza online per ${categoria.toLowerCase()}: una proposta di Noventra`
+            : 'Una proposta per la presenza online della vostra attività | Noventra',
+          opening: categoria
+            ? `Chi cerca ${categoria.toLowerCase()} in zona spesso parte da una ricerca online: per questo credo che una presenza curata possa esservi utile.`
+            : 'Ho visto la scheda pubblica della vostra attività e credo che una presenza online curata possa aiutarvi a farvi trovare da chi cerca i vostri servizi nella vostra zona.',
           website_observation: has.has('F1')
             ? {
                 text: 'Dando un’occhiata al sito ho notato alcuni aspetti tecnici che si possono migliorare senza stravolgerlo.',
@@ -50,7 +73,11 @@ export async function startFakeAnthropic(port = 0): Promise<{ url: string; reque
           relevance:
             'Noventra può seguire il progetto dall’impostazione alla messa online, scegliendo solo ciò che serve davvero alla vostra attività.',
           relevance_evidence_refs: ['B1'],
-          service_ids: d.catalogo_servizi_noventra?.[0] ? [d.catalogo_servizi_noventra[0].id] : [],
+          service_ids: service ? [service] : [],
+          primary_service_id: service,
+          personalization_summary: categoria
+            ? `Apertura dedicata alla categoria «${categoria}»${has.has('F1') ? ' e un rilievo dell’audit del sito' : ''}.`
+            : 'Presentazione generale: prove limitate sull’attività.',
           call_to_action:
             'Se vi fa piacere, possiamo sentirci per una breve chiamata conoscitiva nei prossimi giorni, quando vi è più comodo.',
           verified_facts: [{ text: 'Attività presente su OpenStreetMap', evidence_refs: ['B4'] }],

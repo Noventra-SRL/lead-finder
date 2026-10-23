@@ -1,4 +1,4 @@
-/* ---------- Struttura dell'app: barra laterale numerata + area di lavoro ---------- */
+/* ---------- Struttura dell'app: barra laterale con icone + area di lavoro ---------- */
 
 .shell {
   display: grid;
@@ -63,50 +63,43 @@
 }
 
 .nav__link {
-  position: relative;
-  display: grid;
-  grid-template-columns: 28px 1fr auto;
-  align-items: baseline;
-  padding: 9px var(--space-5);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: 2px var(--space-3);
+  padding: 9px var(--space-3);
+  border-radius: 10px;
   color: var(--ink-2);
   text-decoration: none;
   font-size: var(--text-md);
-  transition: color 120ms var(--ease);
+  transition:
+    background-color 120ms var(--ease),
+    color 120ms var(--ease);
 }
 
-.nav__link::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 6px;
-  bottom: 6px;
-  width: 3px;
-  background: var(--accent);
-  transform: scaleY(0);
-  transition: transform 160ms var(--ease);
+.nav__icon {
+  flex: none;
+  color: var(--ink-3);
 }
 
 .nav__link:hover {
+  background: var(--sunken);
   color: var(--ink);
 }
 
 .nav__link[aria-current='page'] {
+  background: var(--accent-wash);
   color: var(--ink);
   font-weight: 600;
 }
 
-.nav__link[aria-current='page']::before {
-  transform: scaleY(1);
-}
-
-.nav__num {
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  color: var(--ink-3);
-}
-
-.nav__link[aria-current='page'] .nav__num {
+.nav__link[aria-current='page'] .nav__icon {
   color: var(--accent);
+}
+
+.nav__link:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
 }
 
 .nav__state {
@@ -118,9 +111,30 @@
 
 .rail__user {
   display: grid;
-  gap: var(--space-2);
-  padding: var(--space-4) var(--space-5);
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5) var(--space-2);
   border-top: 1px solid var(--rule);
+}
+
+.rail__avatar {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--accent-wash);
+  color: var(--accent);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.rail__logout {
+  align-self: flex-start;
+  justify-self: start;
+  gap: var(--space-2);
+  margin: 0 var(--space-3) var(--space-4);
 }
 
 .rail__who {
@@ -139,11 +153,6 @@
 .rail__role {
   font-size: var(--text-xs);
   color: var(--ink-3);
-}
-
-.rail__user .btn {
-  justify-self: start;
-  margin-left: calc(var(--space-2) * -1);
 }
 
 .topbar {

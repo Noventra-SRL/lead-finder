@@ -830,11 +830,16 @@ export async function changeStage(
       [id, input.stage, input.stage === 'perso' ? input.lostReason!.trim() : null, toClosed, !fromClosed],
     );
     if (input.stage === 'non_contattare')
+      // «non contattare» nel CRM è un rifiuto di contatto: esclusione e divieto su ogni canale (il più prudente)
       await applyExclusion(
         tx,
         current.business_id,
-        true,
-        `CRM: non contattare${input.note ? ` — ${input.note}` : ''}`.slice(0, 300),
+        {
+          excluded: true,
+          code: 'rifiuto_commerciale',
+          note: `CRM: non contattare${input.note ? ` — ${input.note}` : ''}`.slice(0, 300),
+          scope: 'tutti',
+        },
         userId,
       );
     const notes = [

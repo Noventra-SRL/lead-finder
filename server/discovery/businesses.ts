@@ -2,6 +2,7 @@ import { audit } from '../audit.ts';
 import {
   CONTACT_STATUS_LABEL,
   CONTACT_STATUS_SQL,
+  DO_NOT_CONTACT_SQL,
   HAS_EMAIL_SQL,
   LAST_CONTACT_SQL,
   type ContactStatus,
@@ -15,6 +16,13 @@ import { CLOSED_SQL, CLOSED_STAGES, type StageId } from '../crm/model.ts';
 import { CATEGORIES, type CategoryId } from './categories.ts';
 import { sectorById } from './sectors.ts';
 import { JobError } from './jobs.ts';
+import { BUSINESS_CATEGORY_LABEL, type BusinessCategoryId } from '../categories/catalog.ts';
+import {
+  CONTACTABILITY_LABEL,
+  CONTACTABILITY_SQL,
+  prioritySql,
+  type Contactability,
+} from '../enrichment/contactability.ts';
 
 /*
  * Lettura delle aziende salvate (elenco, scheda con provenienza e cronologia), revisione dei possibili duplicati
@@ -46,6 +54,15 @@ export const SORTS = {
   serviceFit: "(aa.components->'service_fit'->>'score')::int",
   // ultimo contatto (email accettata o attività di contatto nel CRM)
   lastContact: LAST_CONTACT_SQL,
+  // «Priorità: aziende con email disponibile»: fascia di contattabilità, poi punteggio commerciale decrescente
+  priority: `((${prioritySql(COMMERCIAL_SCORE)}) * 1000 - COALESCE((${COMMERCIAL_SCORE}), -1))`,
+  // città (comune ISTAT, altrimenti la città dell'indirizzo)
+  city: 'COALESCE(b.municipality_name, b.address_city)',
+  // categoria commerciale (vista «Tutte le aziende»)
+  businessCategory: 'b.primary_category',
+  // stato della valutazione: prima le aziende valutate, poi quelle da aggiornare, in corso, in attesa, non riuscite
+  assessment: `CASE (${AI_STATE_SQL}) WHEN 'assessed' THEN 0 WHEN 'outdated' THEN 1 WHEN 'incomplete' THEN 2
+    WHEN 'running' THEN 3 WHEN 'pending' THEN 4 WHEN 'failed' THEN 5 ELSE 6 END`,
 } as const;
 export type SortKey = keyof typeof SORTS;
 
@@ -86,6 +103,14 @@ export interface BusinessFilters {
   contactStatus?: ContactStatus[];
   /** Email generica pubblica disponibile (yes) o assente (no). */
   email?: 'yes' | 'no';
+  /** Categoria commerciale (server/categories/catalog.ts); 'pending' = non ancora classificate. */
+  businessCategory?: BusinessCategoryId | 'pending';
+  /** Solo le aziende con la categoria da verificare. */
+  categoryReview?: boolean;
+  /** Contattabilità via email (server/enrichment/contactability.ts), una o più. */
+  contactability?: Contactability[];
+  /** Solo le aziende con un divieto di contatto (true) o senza (false). */
+  doNotContact?: boolean;
   /** Anche le aziende unite a un'altra (solo per le opportunità del CRM, che restano visibili). */
   includeMerged?: boolean;
   /** Punteggio commerciale (AI o riserva a regole) in un intervallo, es. una fascia. */
@@ -203,6 +228,12 @@ interface BusinessRow {
   email_kind?: 'generic' | 'personal' | null;
   excluded_at?: Date | null;
   excluded_reason?: string | null;
+  exclusion_code?: ExclusionCode | null;
+  do_not_contact_at?: Date | null;
+  do_not_contact_scope?: DoNotContactScope | null;
+  do_not_contact_note?: string | null;
+  fax?: string | null;
+  phones_extra?: string[] | null;
   // Fase 7: opportunità del CRM (aperta, altrimenti la più recente)
   crm?: { id: string; stage: string } | null;
   // valutazione commerciale AI corrente
@@ -217,6 +248,25 @@ interface BusinessRow {
   contact_status?: ContactStatus | null;
   last_contact_at?: Date | null;
   ai_summary?: string | null;
+  primary_category?: BusinessCategoryId | null;
+  category_status?: 'classificata' | 'da_verificare' | null;
+  category_source?: 'automatica' | 'manuale' | null;
+  category_evidence?: string | null;
+  contactability?: Contactability | null;
+  email_source?: 'osm' | 'website' | 'manuale' | null;
+  email_status?: 'pubblicata' | 'verificata' | 'da_verificare' | null;
+  email_source_url?: string | null;
+  email_found_at?: Date | null;
+  email_domain_status?: 'mx' | 'a_only' | 'none' | 'error' | null;
+  contact_name?: string | null;
+  contact_role?: string | null;
+  notes?: string | null;
+  operating_status?: 'attiva' | 'chiusa_temporaneamente' | 'chiusa_definitivamente' | null;
+  edited_fields?: string[] | null;
+  edited_at?: Date | null;
+  updated_at?: Date | null;
+  email_domain_checked_for?: string | null;
+  email_domain_checked_at?: Date | null;
   ai_last_error?: string | null;
   ai_next_attempt?: Date | null;
   ai_acquisition?: number | null;
@@ -271,6 +321,40 @@ function commercialOf(row: BusinessRow) {
 
 export type { BusinessRow };
 
+export const EMAIL_VERIFICATION_LABEL = {
+  delivery_verified: 'Consegna verificata',
+  domain_checked: 'Dominio che riceve posta',
+  publicly_listed: 'Pubblicata in una fonte pubblica',
+  syntax_valid: 'Indirizzo formalmente valido',
+  unverified: 'Non verificata',
+} as const;
+
+/**
+ * Livello di verifica dell'email, dal più forte. Un'email pubblicata o con un dominio valido NON è garantita: solo una
+ * conferma di consegna (oggi mai automatica) la rende «verificata». Il dominio è controllato solo via DNS.
+ */
+function emailVerification(row: BusinessRow) {
+  if (!row.email) return null;
+  const domain = row.email_domain_checked_for === row.email ? (row.email_domain_status ?? null) : null;
+  const level =
+    row.email_status === 'verificata'
+      ? 'delivery_verified'
+      : domain === 'mx' || domain === 'a_only'
+        ? 'domain_checked'
+        : row.email_source === 'osm' || row.email_source === 'website'
+          ? 'publicly_listed'
+          : /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email)
+            ? 'syntax_valid'
+            : 'unverified';
+  return {
+    level,
+    label: EMAIL_VERIFICATION_LABEL[level],
+    publiclyListed: row.email_source === 'osm' || row.email_source === 'website',
+    domain,
+    domainCheckedAt: iso(row.email_domain_checked_at ?? null),
+  } as const;
+}
+
 export function summary(row: BusinessRow) {
   return {
     id: row.id,
@@ -298,9 +382,52 @@ export function summary(row: BusinessRow) {
         row.performance_score === null || row.performance_score === undefined ? null : Number(row.performance_score),
     },
     sector: row.sector ? { id: row.sector, label: sectorById(row.sector)?.label ?? row.sector } : null,
+    // contattabilità via email: stato, provenienza e prova del recapito (separata dal punteggio)
+    emailInfo: row.contactability
+      ? {
+          status: row.contactability,
+          label: CONTACTABILITY_LABEL[row.contactability],
+          source: row.email_source ?? null,
+          sourceUrl: row.email_source_url ?? null,
+          foundAt: iso(row.email_found_at ?? null),
+          verification: emailVerification(row),
+        }
+      : null,
+    // categoria commerciale di «Trova aziende», con lo stato e la prova (null finché non è classificata)
+    businessCategory: row.primary_category
+      ? {
+          id: row.primary_category,
+          label: BUSINESS_CATEGORY_LABEL[row.primary_category],
+          status: row.category_status ?? 'da_verificare',
+          source: row.category_source ?? 'automatica',
+          evidence: row.category_evidence ?? null,
+        }
+      : null,
     // recapiti pubblici dell'attività indicati dalla fonte; email solo se generica (vedi discovery/contacts.ts)
-    contacts: { phone: row.phone ?? null, email: row.email ?? null, emailKind: row.email_kind ?? null },
-    excluded: row.excluded_at ? { at: iso(row.excluded_at), reason: row.excluded_reason ?? null } : null,
+    contacts: {
+      phone: row.phone ?? null,
+      email: row.email ?? null,
+      emailKind: row.email_kind ?? null,
+      fax: row.fax ?? null,
+      phonesExtra: row.phones_extra ?? [],
+    },
+    // esclusione dalla prospezione: motivo codificato e nota (l'azienda e la sua storia restano)
+    excluded: row.excluded_at
+      ? {
+          at: iso(row.excluded_at),
+          reason: row.excluded_reason ?? null,
+          code: row.exclusion_code ?? 'altro',
+          label: EXCLUSION_LABEL[row.exclusion_code ?? 'altro'],
+        }
+      : null,
+    // divieto di contatto (rifiuto commerciale): separato dall'esclusione, resta anche se l'azienda viene reinclusa
+    doNotContact: row.do_not_contact_at
+      ? {
+          at: iso(row.do_not_contact_at),
+          scope: row.do_not_contact_scope ?? 'tutti',
+          note: row.do_not_contact_note ?? null,
+        }
+      : null,
     crm: row.crm
       ? { opportunityId: row.crm.id, stage: row.crm.stage, open: !CLOSED_STAGES.includes(row.crm.stage as StageId) }
       : null,
@@ -339,6 +466,15 @@ export function summary(row: BusinessRow) {
       : null,
     firstSeenAt: iso(row.first_seen_at),
     lastVerifiedAt: iso(row.last_verified_at),
+    // dati inseriti da una persona in «Modifica» (mai dalla fonte)
+    contactPerson:
+      row.contact_name || row.contact_role ? { name: row.contact_name ?? null, role: row.contact_role ?? null } : null,
+    notes: row.notes ?? null,
+    operatingStatus: row.operating_status ?? null,
+    editedFields: row.edited_fields ?? [],
+    editedAt: iso(row.edited_at ?? null),
+    // versione della scheda per la modifica (protezione dalle sovrascritture)
+    updatedAt: iso(row.updated_at ?? null),
   };
 }
 
@@ -367,7 +503,8 @@ const AUDIT_COLUMNS = `, ${WEBSITE_STATUS} AS website_status, w.last_checked_at 
   -- da rivalutare: l'impronta delle prove di oggi è diversa da quella della valutazione corrente (server/ai/queue.ts)
   (aa.id IS NOT NULL AND ast.fingerprint IS NOT NULL AND aa.cache_key <> ast.fingerprint) AS ai_outdated,
   ${AI_STATE_SQL} AS ai_state, ast.last_error AS ai_last_error, ast.next_attempt_at AS ai_next_attempt,
-  ${CONTACT_STATUS_SQL} AS contact_status, ${LAST_CONTACT_SQL} AS last_contact_at, aa.output->>'summary' AS ai_summary`;
+  ${CONTACT_STATUS_SQL} AS contact_status, ${LAST_CONTACT_SQL} AS last_contact_at, aa.output->>'summary' AS ai_summary,
+  ${CONTACTABILITY_SQL} AS contactability`;
 
 const PENDING_REVIEWS = `(SELECT count(*)::int FROM duplicate_candidates d
    WHERE d.status = 'pending' AND (d.business_a = b.id OR d.business_b = b.id)) AS pending_reviews`;
@@ -406,6 +543,13 @@ export function listQuery(f: BusinessFilters) {
   if (f.contactStatus?.length) add((p) => `(${CONTACT_STATUS_SQL}) = ANY(${p})`, f.contactStatus);
   if (f.email === 'yes') where.push(HAS_EMAIL_SQL);
   if (f.email === 'no') where.push(`NOT ${HAS_EMAIL_SQL}`);
+  // ---- categoria commerciale ----
+  if (f.businessCategory === 'pending') where.push('b.primary_category IS NULL');
+  else if (f.businessCategory) add((p) => `b.primary_category = ${p}`, f.businessCategory);
+  if (f.categoryReview) where.push("b.category_status = 'da_verificare'");
+  if (f.contactability?.length) add((p) => `(${CONTACTABILITY_SQL}) = ANY(${p})`, f.contactability);
+  if (f.doNotContact === true) where.push(DO_NOT_CONTACT_SQL);
+  if (f.doNotContact === false) where.push(`NOT ${DO_NOT_CONTACT_SQL}`);
   if (f.crm === 'none') where.push(`NOT ${openOpportunity}`);
   if (f.crm === 'open') where.push(openOpportunity);
   if (f.crm === 'any') where.push('EXISTS (SELECT 1 FROM crm_opportunities o WHERE o.business_id = b.id)');
@@ -610,8 +754,33 @@ export async function getBusiness(db: Queryable, id: string) {
       WHERE a.entity_type = 'business' AND a.entity_id = $1 ORDER BY a.id DESC LIMIT 50`,
     [id],
   );
+  // email scritte sul sito (tutte quelle conservate, anche non più presenti), con la pagina e le date
+  const websiteEmails = await db.query<{
+    email: string;
+    relation: string;
+    via: string;
+    page_url: string;
+    first_seen_at: Date;
+    last_seen_at: Date;
+    checked_at: Date | null;
+  }>(
+    `SELECT we.email, we.relation, we.via, we.page_url, we.first_seen_at, we.last_seen_at, w.emails_checked_at AS checked_at
+       FROM business_websites bw JOIN website_emails we ON we.website_id = bw.website_id JOIN websites w ON w.id = bw.website_id
+      WHERE bw.business_id = $1 ORDER BY we.relation, we.email`,
+    [id],
+  );
   return {
     ...summary(row),
+    websiteEmails: websiteEmails.rows.map((e) => ({
+      email: e.email,
+      relation: e.relation,
+      via: e.via,
+      pageUrl: e.page_url,
+      firstSeenAt: iso(e.first_seen_at),
+      lastSeenAt: iso(e.last_seen_at),
+      // presente nell'ultimo controllo delle pagine del sito
+      current: e.checked_at ? new Date(e.last_seen_at).getTime() >= new Date(e.checked_at).getTime() : false,
+    })),
     address: {
       street: row.address_street,
       housenumber: row.address_housenumber,
@@ -884,42 +1053,115 @@ export async function discoveryStats(db: Queryable) {
  * Esclusione dalla ricerca di lead e dal contatto (Fase 6): l'azienda resta nel database (una nuova ricerca la
  * riconosce e non la ripropone), ma non compare negli elenchi, nelle ricerche di lead e nelle esportazioni.
  */
-export async function setExclusion(db: Db, id: string, excluded: boolean, reason: string | null, userId: string) {
-  await db.transaction((tx) => applyExclusion(tx, id, excluded, reason, userId));
+/** Motivi dell'esclusione dalla prospezione (codici canonici, etichette italiane). */
+export const EXCLUSION_CODES = [
+  'nessun_contatto',
+  'contatti_non_validi',
+  'rifiuto_commerciale',
+  'attivita_chiusa',
+  'non_pertinente',
+  'duplicato',
+  'altro',
+] as const;
+export type ExclusionCode = (typeof EXCLUSION_CODES)[number];
+export const EXCLUSION_LABEL: Record<ExclusionCode, string> = {
+  nessun_contatto: 'Nessun contatto disponibile',
+  contatti_non_validi: 'Contatti non validi',
+  rifiuto_commerciale: 'Rifiuto commerciale',
+  attivita_chiusa: 'Attività chiusa',
+  non_pertinente: 'Azienda non pertinente',
+  duplicato: 'Duplicato',
+  altro: 'Altro',
+};
+export type DoNotContactScope = 'tutti' | 'email' | 'telefono';
+
+export interface ExclusionInput {
+  excluded: boolean;
+  /** Obbligatorio per escludere (le chiamate precedenti senza motivo diventano «altro»). */
+  code?: ExclusionCode;
+  note?: string | null;
+  /** Solo per il rifiuto commerciale: canali vietati (predefinito: tutti, il più prudente). */
+  scope?: DoNotContactScope;
 }
 
-/** Esclusione dentro una transazione esistente (usata anche dal CRM per "non contattare"). */
-export async function applyExclusion(
-  tx: Queryable,
-  id: string,
-  excluded: boolean,
-  reason: string | null,
-  userId: string,
-) {
-  {
-    const { rows } = await tx.query<{ merged_into: string | null }>(
-      'SELECT merged_into FROM businesses WHERE id = $1 FOR UPDATE',
+export async function setExclusion(db: Db, id: string, input: ExclusionInput, userId: string) {
+  await db.transaction((tx) => applyExclusion(tx, id, input, userId));
+}
+
+/**
+ * Esclusione dalla prospezione e divieto di contatto, in una transazione esistente (usata anche dal CRM per la fase
+ * «non contattare»). L'azienda e tutta la sua storia restano: si cambia solo lo stato.
+ *  - escludere: motivo obbligatorio; l'azienda esce da elenchi, conteggi, esportazioni, ricerche e invii;
+ *  - rifiuto commerciale: in più il divieto di contatto (data, canali, nota), che resta anche se l'azienda torna tra
+ *    i potenziali clienti o viene ritrovata da una ricerca;
+ *  - reincludere: toglie solo l'esclusione, mai il divieto di contatto (lo revoca un amministratore, revokeDoNotContact).
+ */
+export async function applyExclusion(tx: Queryable, id: string, input: ExclusionInput, userId: string) {
+  const { rows } = await tx.query<{ merged_into: string | null; do_not_contact_at: Date | null }>(
+    'SELECT merged_into, do_not_contact_at FROM businesses WHERE id = $1 FOR UPDATE',
+    [id],
+  );
+  if (!rows[0]) throw new JobError(404, 'NOT_FOUND', 'Azienda non trovata.');
+  const note = input.note?.trim().slice(0, 300) || null;
+  if (input.excluded) {
+    const code = input.code ?? 'altro';
+    await tx.query(
+      `UPDATE businesses SET excluded_at = now(), excluded_reason = $2, excluded_by = $3, exclusion_code = $4, updated_at = now()
+        WHERE id = $1`,
+      [id, note, userId, code],
+    );
+    if (code === 'rifiuto_commerciale' && !rows[0].do_not_contact_at)
+      await tx.query(
+        `UPDATE businesses SET do_not_contact_at = now(), do_not_contact_scope = $2, do_not_contact_note = $3,
+                do_not_contact_by = $4 WHERE id = $1`,
+        [id, input.scope ?? 'tutti', note, userId],
+      );
+  } else
+    await tx.query(
+      `UPDATE businesses SET excluded_at = NULL, excluded_reason = NULL, excluded_by = NULL, exclusion_code = NULL,
+              updated_at = now() WHERE id = $1`,
+      [id],
+    );
+  await audit(tx, {
+    userId,
+    action: input.excluded ? 'business.excluded' : 'business.included',
+    entityType: 'business',
+    entityId: id,
+    details: input.excluded
+      ? {
+          code: input.code ?? 'altro',
+          reason: note,
+          ...(input.code === 'rifiuto_commerciale' ? { doNotContact: input.scope ?? 'tutti' } : {}),
+        }
+      : rows[0].do_not_contact_at
+        ? { doNotContactKept: true }
+        : {},
+  });
+}
+
+/** Revoca del divieto di contatto: solo amministratori, con un motivo registrato (es. consenso ricevuto per iscritto). */
+export async function revokeDoNotContact(db: Db, id: string, note: string, userId: string) {
+  await db.transaction(async (tx) => {
+    const { rows } = await tx.query<{ do_not_contact_at: Date | null; do_not_contact_scope: string | null }>(
+      'SELECT do_not_contact_at, do_not_contact_scope FROM businesses WHERE id = $1 FOR UPDATE',
       [id],
     );
     if (!rows[0]) throw new JobError(404, 'NOT_FOUND', 'Azienda non trovata.');
-    if (excluded)
-      await tx.query(
-        'UPDATE businesses SET excluded_at = now(), excluded_reason = $2, excluded_by = $3, updated_at = now() WHERE id = $1',
-        [id, reason, userId],
-      );
-    else
-      await tx.query(
-        'UPDATE businesses SET excluded_at = NULL, excluded_reason = NULL, excluded_by = NULL, updated_at = now() WHERE id = $1',
-        [id],
-      );
+    if (!rows[0].do_not_contact_at)
+      throw new JobError(409, 'NO_DO_NOT_CONTACT', 'Per questa azienda non c’è un divieto di contatto da revocare.');
+    await tx.query(
+      `UPDATE businesses SET do_not_contact_at = NULL, do_not_contact_scope = NULL, do_not_contact_note = NULL,
+              do_not_contact_by = NULL WHERE id = $1`,
+      [id],
+    );
     await audit(tx, {
       userId,
-      action: excluded ? 'business.excluded' : 'business.included',
+      action: 'business.do_not_contact_revoked',
       entityType: 'business',
       entityId: id,
-      details: excluded ? { reason } : {},
+      details: { note: note.slice(0, 300), since: rows[0].do_not_contact_at, scope: rows[0].do_not_contact_scope },
     });
-  }
+  });
 }
 
 /** Ricerche di lead che hanno trovato l'azienda (provenienza nella scheda). */

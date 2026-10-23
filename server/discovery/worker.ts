@@ -20,12 +20,14 @@ import { ProviderError, type DiscoveryProvider, type UnitResult } from './types.
 interface JobRow {
   id: string;
   status: JobStatus;
+  provider: string;
   area_type: string;
   radius_km: string | number | null;
   categories: CategoryId[];
   max_results: number;
   min_completeness: number;
   require_website: boolean;
+  require_contact: boolean;
   sectors: string[];
   limit_per_sector: number | null;
   inserted: number;
@@ -66,7 +68,7 @@ const saved = (j: Pick<JobRow, 'inserted' | 'updated' | 'unchanged' | 'merged'>)
 export class DiscoveryWorker {
   readonly id = `${process.pid}-${randomUUID().slice(0, 8)}`;
   private readonly db: Db;
-  private readonly provider: DiscoveryProvider;
+  private readonly providers: Map<string, DiscoveryProvider>;
   private readonly log: Logger;
   private readonly pollMs: number;
   private readonly heartbeatMs: number;
@@ -78,9 +80,9 @@ export class DiscoveryWorker {
   private current: AbortController | null = null;
   private stopping = false;
 
-  constructor(db: Db, provider: DiscoveryProvider, options: WorkerOptions) {
+  constructor(db: Db, provider: DiscoveryProvider | DiscoveryProvider[], options: WorkerOptions) {
     this.db = db;
-    this.provider = provider;
+    this.providers = new Map((Array.isArray(provider) ? provider : [provider]).map((p) => [p.info().id, p]));
     this.log = options.log.child({ component: 'scoperta' });
     this.pollMs = options.pollMs ?? 2000;
     this.heartbeatMs = options.heartbeatMs ?? 5000;
@@ -115,8 +117,8 @@ export class DiscoveryWorker {
       `UPDATE discovery_jobs SET status = 'running', worker_id = $1, heartbeat_at = now(),
               started_at = COALESCE(started_at, now()), updated_at = now()
         WHERE id = (SELECT id FROM discovery_jobs WHERE status = 'pending' ORDER BY created_at LIMIT 1 FOR UPDATE SKIP LOCKED)
-        RETURNING id, status, area_type, radius_km, categories, max_results, min_completeness, require_website,
-                  sectors, limit_per_sector, inserted, updated, unchanged, merged`,
+        RETURNING id, status, provider, area_type, radius_km, categories, max_results, min_completeness, require_website,
+                  require_contact, sectors, limit_per_sector, inserted, updated, unchanged, merged`,
       [this.id],
     );
     if (!rows[0]) return false;
@@ -209,7 +211,9 @@ export class DiscoveryWorker {
 
         let result: UnitResult;
         try {
-          result = await this.provider.fetchUnit(
+          const provider = this.providers.get(job.provider);
+          if (!provider) throw new ProviderError('not_configured', `Fornitore «${job.provider}» non disponibile.`);
+          result = await provider.fetchUnit(
             {
               municipalities: unit.municipality_codes.map((c) => geo().municipality(c)!),
               ...(job.radius_km !== null ? { radiusKm: Number(job.radius_km) } : {}),
@@ -232,7 +236,9 @@ export class DiscoveryWorker {
                 log.warn('messaggio di nuovo tentativo non registrato', { error }),
               );
             },
-            job.sectors.length ? { sectors: job.sectors } : undefined,
+            job.sectors.length || job.require_contact
+              ? { sectors: job.sectors, requireContact: job.require_contact }
+              : undefined,
           );
         } catch (error) {
           if (!(error instanceof ProviderError)) throw error;
@@ -262,6 +268,7 @@ export class DiscoveryWorker {
             sourceDataAt: result.sourceTimestamp ? new Date(result.sourceTimestamp) : null,
             minCompleteness: job.min_completeness,
             requireWebsite: job.require_website,
+            requireContact: job.require_contact,
             seen,
           };
           const remaining = job.max_results - saved(counts);

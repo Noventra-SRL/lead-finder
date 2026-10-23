@@ -32,7 +32,14 @@ export interface ProviderRecord {
    * Recapiti PUBBLICI dell'attività indicati dalla fonte (Fase 6). L'email si conserva solo se generica (info@,
    * prenotazioni@…): un indirizzo che sembra personale non viene salvato, si registra solo che esiste.
    */
-  contacts: { phone: string | null; email: string | null; emailKind: 'generic' | 'personal' | null };
+  contacts: {
+    phone: string | null;
+    email: string | null;
+    emailKind: 'generic' | 'personal' | null;
+    /** Fax e altri numeri di telefono indicati dalla fonte (facoltativi; mai dedotti). */
+    fax?: string | null;
+    phonesExtra?: string[];
+  };
   /** Indicatori di completezza: la fonte riporta questi dati. */
   has: { website: boolean; address: boolean; phone: boolean; email: boolean; openingHours: boolean };
   /** Tag originali selezionati per la provenienza (senza recapiti personali). */
@@ -93,6 +100,12 @@ export interface ProviderInfo {
   categories: { id: CategoryId; coverage: 'buona' | 'parziale' | 'limitata'; note?: string }[];
 }
 
+export interface FetchOptions {
+  sectors?: string[];
+  /** Solo attività con un sito o un'email indicati dalla fonte (filtro applicato dalla fonte quando possibile). */
+  requireContact?: boolean;
+}
+
 export interface DiscoveryProvider {
   info(): ProviderInfo;
   /**
@@ -107,7 +120,7 @@ export interface DiscoveryProvider {
     /** Chiamata prima di ogni nuovo tentativo dopo un errore temporaneo del fornitore. */
     onRetry?: (info: RetryInfo) => void,
     /** Ricerca per settori (Fase 6): selettori dei settori e limite PER SETTORE e per comune. */
-    options?: { sectors?: string[] },
+    options?: FetchOptions,
   ): Promise<UnitResult>;
 }
 

@@ -1,4 +1,6 @@
 import { bandOf, DEFAULT_AI_CONFIG } from '../ai/config.ts';
+import { CONTACTABILITY_SQL } from '../enrichment/contactability.ts';
+import { BUSINESS_CATEGORY_LABEL, businessCategory, type BusinessCategoryId } from '../categories/catalog.ts';
 import { COMMERCIAL_SCORE } from '../discovery/businesses.ts';
 import { audit } from '../audit.ts';
 import type { Db, Queryable } from '../db/client.ts';
@@ -30,12 +32,21 @@ export interface HuntOptions {
   excludeKnown: boolean;
   /** Verifica automatica dei siti trovati (audit della Fase 3). */
   audit: boolean;
+  /**
+   * Obiettivo = aziende con un'email pubblica: indicata dalla fonte (es. OpenStreetMap) o scritta sul loro sito.
+   * La scoperta legge solo attività con un sito o un'email; le verifiche dei siti cercano le email.
+   */
+  publicEmail?: boolean;
 }
 
 export interface HuntRequest {
   target: number;
   area: { type: AreaType; code: string };
   sectors: string[];
+  /** Ricerca avviata da una categoria di «Trova aziende»: i settori sono quelli della categoria. */
+  category?: BusinessCategoryId | null;
+  /** Fonte: osm (predefinita) o google. */
+  provider?: 'osm' | 'google';
   options: HuntOptions;
 }
 
@@ -83,6 +94,14 @@ const LINKED = `hunt_run_businesses hb
   LEFT JOIN ai_assessments aa ON aa.business_id = b.id AND aa.is_current
   LEFT JOIN ai_business_states ast ON ast.business_id = b.id`;
 const OWN_SITE = 'b.website_url IS NOT NULL AND NOT b.website_shared';
+/** Email dell'attività trovata in una fonte pubblica (scheda della fonte o pagina del sito), mai inserita a mano. */
+export const PUBLIC_EMAIL = `(b.email IS NOT NULL AND b.email_kind IS DISTINCT FROM 'personal' AND b.email_source IN ('osm', 'website'))`;
+/** Siti propri ancora da controllare per le email (nessuna email pubblica per ora). */
+const SITE_PENDING = `(${OWN_SITE} AND NOT ${PUBLIC_EMAIL} AND w.emails_checked_at IS NULL
+  AND COALESCE(w.status, 'not_checked') NOT IN ('unreachable', 'timeout', 'blocked', 'invalid_url', 'audit_failed')
+  AND bw.status IS DISTINCT FROM 'invalid_url')`;
+/** Siti propri già controllati (o non raggiungibili) di aziende senza un'email indicata dalla fonte. */
+const SITE_CHECKED = `(${OWN_SITE} AND b.email_source IS DISTINCT FROM 'osm' AND NOT ${SITE_PENDING})`;
 /** Problemi documentati dall'audit: almeno un rilievo grave, o almeno tre rilievi utili. */
 const SITE_ISSUES = `w.status IN ('valid', 'redirected') AND (COALESCE((la.summary->'findings'->'bySeverity'->>'high')::int, 0) > 0 OR la.actionable_count >= 3)`;
 
@@ -91,6 +110,7 @@ export function qualification(options: HuntOptions, params: unknown[], level: 'c
   const parts = ['b.excluded_at IS NULL'];
   if (options.excludeKnown) parts.push('hb.is_new');
   if (options.websitePreference === 'no_website') parts.push(`NOT (${OWN_SITE})`);
+  if (options.publicEmail) parts.push(level === 'qualified' ? PUBLIC_EMAIL : `(${PUBLIC_EMAIL} OR (${OWN_SITE}))`);
   if (level === 'qualified') {
     if (options.websitePreference === 'website_issues') parts.push(`(${SITE_ISSUES})`);
     if (options.minScore !== null) {
@@ -117,6 +137,27 @@ export async function countLinked(
   return rows[0]!.n;
 }
 
+/**
+ * Previsione per le ricerche di aziende con email pubblica: quante ne hanno già una, quanti siti restano da
+ * controllare e la quota di siti controllati in cui è stata trovata un'email (misurata su questa ricerca).
+ */
+export async function emailForecast(db: Queryable, runId: string, options: HuntOptions) {
+  const params: unknown[] = [runId];
+  const cond = qualification({ ...options, publicEmail: false }, params, 'candidate');
+  const { rows } = await db.query<{ withEmail: number; pending: number; checked: number; foundOnSite: number }>(
+    `SELECT count(*) FILTER (WHERE ${PUBLIC_EMAIL})::int AS "withEmail",
+            count(*) FILTER (WHERE ${SITE_PENDING})::int AS pending,
+            count(*) FILTER (WHERE ${SITE_CHECKED})::int AS checked,
+            count(*) FILTER (WHERE ${SITE_CHECKED} AND b.email_source = 'website')::int AS "foundOnSite"
+       FROM ${LINKED} WHERE hb.run_id = $1 AND ${cond}`,
+    params,
+  );
+  const r = rows[0]!;
+  // prima di 20 siti controllati: stima prudente (circa un sito su tre pubblica un indirizzo dell'attività)
+  const rate = r.checked >= 20 ? r.foundOnSite / r.checked : 0.3;
+  return { ...r, rate, expected: r.withEmail + Math.round(r.pending * rate) };
+}
+
 export async function createHuntRun(
   db: Db,
   req: HuntRequest,
@@ -126,12 +167,16 @@ export async function createHuntRun(
     throw new JobError(
       503,
       'PROVIDER_NOT_CONFIGURED',
-      'La ricerca non è disponibile: nessun server OpenStreetMap configurato (DISCOVERY_OVERPASS_URL).',
+      req.provider === 'google'
+        ? 'La ricerca con Google Maps non è disponibile: GOOGLE_PLACES_API_KEY non è configurata sul server.'
+        : 'La ricerca non è disponibile: nessun server OpenStreetMap configurato (DISCOVERY_OVERPASS_URL).',
     );
   const area = geo().area(req.area.type, req.area.code);
   if (!area) throw new JobError(400, 'UNKNOWN_AREA', 'Area geografica sconosciuta.');
-  const sectors = sectorsInOrder(req.sectors);
-  if (!sectors.length || sectors.length !== new Set(req.sectors).size)
+  // da una categoria: i suoi settori di ricerca (server/categories/catalog.ts), sempre gli stessi
+  const requested = req.category ? businessCategory(req.category).sectors : req.sectors;
+  const sectors = sectorsInOrder(requested);
+  if (!sectors.length || sectors.length !== new Set(requested).size)
     throw new JobError(400, 'UNKNOWN_SECTOR', 'Settore non presente nel catalogo.');
   const plan = planAreas(area.type, area.code);
   if (!plan.length) throw new JobError(400, 'UNKNOWN_AREA', 'Area geografica senza comuni.');
@@ -148,8 +193,8 @@ export async function createHuntRun(
         active[0].id,
       );
     const { rows } = await tx.query<{ id: string }>(
-      `INSERT INTO hunt_runs (created_by, target, area_type, area_code, area_name, sectors, options, plan, messages)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+      `INSERT INTO hunt_runs (created_by, target, area_type, area_code, area_name, sectors, options, plan, messages, category, provider)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
       [
         ctx.userId,
         req.target,
@@ -162,9 +207,11 @@ export async function createHuntRun(
         JSON.stringify([
           jobMessage(
             'info',
-            `Obiettivo: ${req.target} aziende in ${area.name}, ${sectors.length} ${sectors.length === 1 ? 'settore' : 'settori'}; ${plan.length} ${plan.length === 1 ? 'area' : 'aree'} da cercare una alla volta.`,
+            `Obiettivo: ${req.target} aziende in ${area.name}${req.category ? `, categoria «${businessCategory(req.category).label}»` : ''}, ${sectors.length} ${sectors.length === 1 ? 'settore' : 'settori'}; ${plan.length} ${plan.length === 1 ? 'area' : 'aree'} da cercare una alla volta.`,
           ),
         ]),
+        req.category ?? null,
+        req.provider ?? 'osm',
       ],
     );
     await audit(tx, {
@@ -172,7 +219,13 @@ export async function createHuntRun(
       action: 'hunt.created',
       entityType: 'hunt_run',
       entityId: rows[0]!.id,
-      details: { target: req.target, area: [area.type, area.code], sectors: sectors.length, options: req.options },
+      details: {
+        target: req.target,
+        area: [area.type, area.code],
+        sectors: sectors.length,
+        category: req.category ?? null,
+        options: req.options,
+      },
     });
     return rows[0]!.id;
   });
@@ -223,6 +276,8 @@ interface RunRow {
   area_code: string;
   area_name: string;
   sectors: string[];
+  category: BusinessCategoryId | null;
+  provider: 'osm' | 'google';
   options: HuntOptions;
   plan: PlanArea[];
   cursor: number;
@@ -250,6 +305,8 @@ const runDto = (r: RunRow) => ({
   target: r.target,
   area: { type: r.area_type, code: r.area_code, name: r.area_name },
   sectors: r.sectors.map((id) => ({ id, label: sectorById(id)?.label ?? id })),
+  category: r.category ? { id: r.category, label: BUSINESS_CATEGORY_LABEL[r.category] ?? r.category } : null,
+  provider: { id: r.provider, label: r.provider === 'google' ? 'Google Maps' : 'OpenStreetMap' },
   options: r.options,
   plan: {
     total: r.plan.length,
@@ -302,7 +359,16 @@ async function progressOf(db: Queryable, r: RunRow) {
             count(*) FILTER (WHERE w.status = 'audit_failed')::int AS audit_failed,
             count(*) FILTER (WHERE w.last_audit_id IS NOT NULL)::int AS audited,
             count(*) FILTER (WHERE ls.id IS NOT NULL)::int AS scored,
-            count(*) FILTER (WHERE ls.status IN ('ranked', 'needs_review'))::int AS ranked
+            count(*) FILTER (WHERE ls.status IN ('ranked', 'needs_review'))::int AS ranked,
+            count(*) FILTER (WHERE (${CONTACTABILITY_SQL}) IN ('pubblicata', 'verificata'))::int AS email_published,
+            count(*) FILTER (WHERE (${CONTACTABILITY_SQL}) = 'da_verificare')::int AS email_to_verify,
+            count(*) FILTER (WHERE (${CONTACTABILITY_SQL}) = 'da_arricchire')::int AS email_awaiting,
+            count(*) FILTER (WHERE (${CONTACTABILITY_SQL}) = 'nessuna_email')::int AS email_none,
+            count(*) FILTER (WHERE ${PUBLIC_EMAIL})::int AS email_public,
+            count(*) FILTER (WHERE ${PUBLIC_EMAIL} AND hb.is_new)::int AS email_public_new,
+            count(*) FILTER (WHERE ${PUBLIC_EMAIL} AND b.email_source_url IS NOT NULL)::int AS email_with_source,
+            count(*) FILTER (WHERE NOT ${PUBLIC_EMAIL} AND NOT ${SITE_PENDING})::int AS email_missing,
+            count(*) FILTER (WHERE b.excluded_at IS NULL AND aa.id IS NULL)::int AS awaiting_assessment
        FROM ${LINKED} WHERE hb.run_id = $1`,
     [r.id],
   );
@@ -333,6 +399,26 @@ async function progressOf(db: Queryable, r: RunRow) {
       invalid: l[0]!.invalid!,
     },
     audits: { completed: l[0]!.audited!, pending: a[0]!.pending!, failed: a[0]!.failed! + l[0]!.audit_failed! },
+    // email: scritte sul sito, da verificare, siti ancora da controllare, siti controllati senza email
+    emails: {
+      published: l[0]!.email_published!,
+      toVerify: l[0]!.email_to_verify!,
+      awaiting: l[0]!.email_awaiting!,
+      none: l[0]!.email_none!,
+      // email trovate in una fonte pubblica (scheda della fonte o sito), di aziende nuove, con la pagina di origine
+      public: l[0]!.email_public!,
+      publicNew: l[0]!.email_public_new!,
+      withSource: l[0]!.email_with_source!,
+      // nessuna email pubblica dopo i controlli (siti controllati senza indirizzi, siti non raggiungibili, senza sito)
+      missing: l[0]!.email_missing!,
+    },
+    // valutazione commerciale AI non ancora completata (in coda o in attesa del fornitore)
+    awaitingAssessment: l[0]!.awaiting_assessment!,
+    checkpoint: {
+      areasDone: r.cursor,
+      areasTotal: r.plan.length,
+      lastArea: r.cursor > 0 ? r.plan[r.cursor - 1]!.name : null,
+    },
     scored: l[0]!.scored!,
     ranked: l[0]!.ranked!,
     qualified,
@@ -348,6 +434,13 @@ export async function getHuntRun(db: Queryable, id: string) {
   const { rows: bySector } = await db.query<{ sector: string | null; n: number }>(
     `SELECT b.sector, count(*)::int AS n FROM hunt_run_businesses hb JOIN businesses b ON b.id = hb.business_id
       WHERE hb.run_id = $1 AND b.merged_into IS NULL GROUP BY b.sector ORDER BY n DESC, b.sector`,
+    [id],
+  );
+  // aziende di questa ricerca per categoria commerciale: trovate per la prima volta e già presenti
+  const { rows: byCategory } = await db.query<{ category: BusinessCategoryId | null; n: number; fresh: number }>(
+    `SELECT b.primary_category AS category, count(*)::int AS n, count(*) FILTER (WHERE hb.is_new)::int AS fresh
+       FROM hunt_run_businesses hb JOIN businesses b ON b.id = hb.business_id
+      WHERE hb.run_id = $1 AND b.merged_into IS NULL GROUP BY b.primary_category ORDER BY n DESC, b.primary_category`,
     [id],
   );
   const { rows: byRegion } = await db.query<{ region_code: string | null; n: number }>(
@@ -402,6 +495,12 @@ export async function getHuntRun(db: Queryable, id: string) {
     progress: await progressOf(db, r),
     currentJob,
     distribution: {
+      categories: byCategory.map((x) => ({
+        category: x.category,
+        label: x.category ? BUSINESS_CATEGORY_LABEL[x.category] : 'In classificazione',
+        count: x.n,
+        new: x.fresh,
+      })),
       sectors: bySector.map((x) => ({
         sector: x.sector,
         label: x.sector ? (sectorById(x.sector)?.label ?? x.sector) : 'Senza settore',

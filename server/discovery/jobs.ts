@@ -44,6 +44,8 @@ export interface JobRequest {
   maxResults: number;
   minCompleteness: number;
   requireWebsite: boolean;
+  /** Solo attività con un sito proprio o un'email indicata dalla fonte (ricerche di aziende con email pubblica). */
+  requireContact?: boolean;
   /** Ricerca per settori (Fase 6): le categorie derivano dai settori. */
   sectors?: string[];
   /** Limite per settore e per comune nelle ricerche per settori. */
@@ -54,6 +56,8 @@ export type { JobMessage };
 
 /** Richieste più piccole nelle ricerche per settori: ogni comune porta decine di blocchi nella query. */
 export const SECTOR_MUNICIPALITIES_PER_REQUEST = 5;
+/** Ricerche di uno o due settori: una query leggera per comune, si possono chiedere più comuni per richiesta. */
+export const FEW_SECTORS_MUNICIPALITIES_PER_REQUEST = 20;
 
 /** Capoluoghi con un nome diverso da quello della provincia. */
 const CAPITALS: Record<string, string> = {
@@ -104,6 +108,7 @@ export function requestKey(provider: string, r: JobRequest): string {
     maxResults: r.maxResults,
     minCompleteness: r.minCompleteness,
     requireWebsite: r.requireWebsite,
+    requireContact: r.requireContact ?? false,
     sectors: [...(r.sectors ?? [])].sort(),
     limitPerSector: r.limitPerSector ?? null,
   });
@@ -152,7 +157,10 @@ export async function createJob(
         ? planUnits(
             input.area.type,
             input.area.code,
-            Math.min(ctx.config.municipalitiesPerRequest, SECTOR_MUNICIPALITIES_PER_REQUEST),
+            Math.min(
+              ctx.config.municipalitiesPerRequest,
+              input.sectors.length <= 2 ? FEW_SECTORS_MUNICIPALITIES_PER_REQUEST : SECTOR_MUNICIPALITIES_PER_REQUEST,
+            ),
             true,
           )
         : planUnits(input.area.type, input.area.code, ctx.config.municipalitiesPerRequest);
@@ -203,8 +211,8 @@ export async function createJob(
     const { rows } = await tx.query<{ id: string }>(
       `INSERT INTO discovery_jobs (created_by, provider, area_type, area_code, area_name, radius_km, categories, max_results,
                                    min_completeness, require_website, request_key, units_total, messages, sectors, limit_per_sector,
-                                   hunt_run_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING id`,
+                                   hunt_run_id, require_contact)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING id`,
       [
         ctx.userId,
         ctx.provider,
@@ -227,6 +235,7 @@ export async function createJob(
         sectors.map((x) => x.id),
         sectors.length ? (input.limitPerSector ?? 1) : null,
         ctx.huntRunId ?? null,
+        input.requireContact ?? false,
       ],
     );
     const id = rows[0]!.id;

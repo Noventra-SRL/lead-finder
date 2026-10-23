@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { expectAccessible, navLink, signInAsAdmin, trackErrors, expectHome } from './helpers.ts';
+import { expectAccessible, navLink, signInAsAdmin, trackErrors, expectHome, openSections } from './helpers.ts';
 import { E2E_USERS } from './users.ts';
 
 /*
@@ -67,7 +67,7 @@ test('dall’opportunità: azienda preselezionata, personalizzazione AI con prov
 
   // azienda preselezionata, bozza dal modello standard
   await expect(page.getByText(TRATTORIA)).toBeVisible();
-  await page.getByRole('button', { name: 'Crea la bozza dal modello standard' }).click();
+  await page.getByRole('button', { name: 'Crea la bozza dal modello ufficiale' }).click();
   await expect(page.getByRole('heading', { level: 1, name: TRATTORIA })).toBeVisible();
   const form = page.getByRole('form', { name: 'Email' });
   await expect(form.getByLabel('Oggetto')).toHaveValue('Un sito web professionale per la tua attività | Noventra');
@@ -86,13 +86,14 @@ test('dall’opportunità: azienda preselezionata, personalizzazione AI con prov
   await gen.getByLabel('Obiettivo commerciale').selectOption({ label: 'Richiedere una call conoscitiva' });
   await gen.getByLabel('Tono').selectOption({ label: 'Cordiale e consulenziale' });
   await gen.getByLabel('Istruzioni (facoltative)').fill('proponi una call di 15 minuti');
-  await gen.getByRole('button', { name: 'Genera con AI' }).click();
+  await gen.getByRole('button', { name: 'Personalizza con AI' }).click();
   await expect(page.getByText('Testo generato dall’AI: rileggilo con attenzione')).toBeVisible();
   await expect(form.getByLabel('Oggetto')).toHaveValue(/Noventra$/);
   await expect(form.getByLabel('Testo')).toHaveValue(
     /consulenza gratuita e senza impegno, con un preventivo chiaro entro 24 ore/,
   );
   await expect(page.getByRole('heading', { name: 'Prove usate dalla personalizzazione' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Perché questa email' })).toContainText('Qualità delle prove');
   // le note interne non entrano nel testo
   await expect(form.getByLabel('Testo')).not.toHaveValue(/Referente e budget non noti/);
 
@@ -100,7 +101,7 @@ test('dall’opportunità: azienda preselezionata, personalizzazione AI con prov
   const body = form.getByLabel('Testo');
   const generated = await body.inputValue();
   await body.fill(generated.replace('Un cordiale saluto,', `${ADDED}\n\nUn cordiale saluto,`));
-  await gen.getByRole('button', { name: 'Rigenera con AI' }).click();
+  await gen.getByRole('button', { name: 'Rigenera email personalizzata' }).click();
   const regen = page.getByRole('dialog', { name: 'Sostituire il testo attuale?' });
   await expect(regen).toContainText('modifiche non salvate');
   await regen.getByRole('button', { name: 'Annulla' }).click();
@@ -160,9 +161,10 @@ test('dalla scheda azienda: preselezione, invio rifiutato dal server con bozza i
   await signIn(page);
   await page.goto('/aziende?q=farmacia%20di%20prova%20albano');
   await page.getByRole('link', { name: FARMACIA, exact: true }).click();
+  await openSections(page);
   await page.getByRole('region', { name: 'Email commerciali' }).getByRole('link', { name: 'Scrivi un’email' }).click();
-  await expect(page.getByText(FARMACIA)).toBeVisible();
-  await page.getByRole('button', { name: 'Crea la bozza dal modello standard' }).click();
+  await expect(page.locator('.email-chosen').getByText(FARMACIA)).toBeVisible();
+  await page.getByRole('button', { name: 'Crea la bozza dal modello ufficiale' }).click();
   const form = page.getByRole('form', { name: 'Email' });
   // il server SMTP finto rifiuta i destinatari che contengono "rifiuta"
   await form.getByLabel('Destinatario').fill('rifiuta@farmacia-prova.example.it');
@@ -176,15 +178,20 @@ test('dalla scheda azienda: preselezione, invio rifiutato dal server con bozza i
   await dialog.getByRole('button', { name: 'Invia ora' }).click();
   await expect(page.getByText('Invio non riuscito', { exact: true }).first()).toBeVisible();
   await expect(page.getByText(/rifiutato il destinatario/).first()).toBeVisible();
-  await expect(form.getByLabel('Testo')).toHaveValue(/^Buongiorno,/);
+  // farmacia: modello ufficiale Farmacube
+  await expect(form.getByLabel('Testo')).toHaveValue(/^Gentile Dottore\/Dottoressa,/);
+  await expect(form.getByLabel('Oggetto')).toHaveValue(
+    'Una soluzione e-commerce pensata per la sua farmacia | Farmacube',
+  );
   await expect(form.getByRole('button', { name: 'Invia email' })).toBeEnabled();
 
   // nessuna attività né opportunità creata da un invio non riuscito
   await page.getByRole('link', { name: FARMACIA }).first().click();
+  await openSections(page);
   await expect(page.getByRole('button', { name: 'Aggiungi al CRM' })).toBeVisible();
   const history = page.getByRole('region', { name: 'Email commerciali' });
   await expect(history.getByText('Invio non riuscito', { exact: true })).toBeVisible();
-  await history.getByRole('link', { name: /Un sito web professionale/ }).click();
+  await history.getByRole('link', { name: /pensata per la sua farmacia/ }).click();
 
   await page.getByRole('button', { name: 'Archivia' }).click();
   await page.getByRole('dialog', { name: 'Archiviare l’email?' }).getByRole('button', { name: 'Archivia' }).click();

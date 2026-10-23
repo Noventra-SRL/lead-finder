@@ -59,6 +59,7 @@ function NewHunt({ meta }: { meta: HunterMeta }) {
   const [minScore, setMinScore] = useState('');
   const [excludeKnown, setExcludeKnown] = useState(false);
   const [audit, setAudit] = useState(true);
+  const [publicEmail, setPublicEmail] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
   const groups = Object.entries(meta.groups);
@@ -74,7 +75,13 @@ function NewHunt({ meta }: { meta: HunterMeta }) {
         target: Number(target),
         area: areaOf(area),
         sectors,
-        options: { websitePreference: preference, minScore: minScore ? Number(minScore) : null, excludeKnown, audit },
+        options: {
+          websitePreference: preference,
+          minScore: minScore ? Number(minScore) : null,
+          excludeKnown,
+          audit: audit || publicEmail,
+          publicEmail,
+        },
       });
       void navigate(`/lead-hunter/${r.run.id}`);
     } catch (err) {
@@ -191,10 +198,24 @@ function NewHunt({ meta }: { meta: HunterMeta }) {
           onChange={(e) => setExcludeKnown(e.target.checked)}
         />
         <Checkbox
+          label="Solo aziende con un’email pubblica"
+          checked={publicEmail}
+          onChange={(e) => {
+            setPublicEmail(e.target.checked);
+            if (e.target.checked && preference === 'no_website') setPreference('any');
+          }}
+          hint="L’obiettivo conta solo le aziende con un’email indicata dalla fonte o scritta sul loro sito, con la pagina di provenienza. Si cercano solo attività con un sito o un’email; i siti vengono controllati per trovare gli indirizzi. Trovare un’email non autorizza l’invio di comunicazioni commerciali."
+        />
+        <Checkbox
           label="Verifica automatica dei siti trovati"
-          checked={audit}
+          checked={audit || publicEmail}
+          disabled={publicEmail}
           onChange={(e) => setAudit(e.target.checked)}
-          hint="Audit della Fase 3, un gruppo di siti alla volta, nel rispetto dei limiti verso ogni sito."
+          hint={
+            publicEmail
+              ? 'Necessaria per trovare le email pubblicate sui siti.'
+              : 'Audit della Fase 3, un gruppo di siti alla volta, nel rispetto dei limiti verso ogni sito.'
+          }
         />
       </fieldset>
 

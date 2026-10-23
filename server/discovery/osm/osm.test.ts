@@ -103,7 +103,13 @@ describe('normalizzazione della risposta', () => {
       has: { website: true, address: true, phone: true, email: false, openingHours: true },
     });
     // Fase 6: il telefono pubblico dell'attività è conservato nei recapiti, mai tra i tag di provenienza
-    expect(farmacia!.contacts).toEqual({ phone: '+39 06 5551234', email: null, emailKind: null });
+    expect(farmacia!.contacts).toEqual({
+      phone: '+39 06 5551234',
+      email: null,
+      emailKind: null,
+      fax: null,
+      phonesExtra: [],
+    });
     expect(JSON.stringify(farmacia!.sourceTags)).not.toContain('5551234');
     expect(farmacia!.sector).toBe('farmacie');
     // un'email che sembra personale non viene conservata: si registra solo che esiste

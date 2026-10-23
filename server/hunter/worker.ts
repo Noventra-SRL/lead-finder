@@ -7,7 +7,7 @@ import { cancelJob, createJob, JobError, pauseJob, resumeJob } from '../discover
 import { geo } from '../geo/geo.ts';
 import { appendMessages, jobMessage } from '../jobs/messages.ts';
 import type { Logger } from '../logger.ts';
-import { countLinked, type HuntOptions, type PlanArea } from './runs.ts';
+import { countLinked, emailForecast, type HuntOptions, type PlanArea } from './runs.ts';
 
 /*
  * Coordinatore delle ricerche di lead: a ogni giro fa avanzare ogni ricerca attiva di un passo, in modo idempotente
@@ -18,6 +18,8 @@ import { countLinked, type HuntOptions, type PlanArea } from './runs.ts';
 const TERMINAL = new Set(['completed', 'completed_with_warnings', 'failed', 'cancelled']);
 /** Oltre questo multiplo dell'obiettivo la scoperta si ferma anche se il punteggio dei candidati non è ancora noto. */
 const OVERSAMPLE = 3;
+/** Ricerche di email pubbliche: molti siti non pubblicano un indirizzo, il limite di sicurezza è più ampio. */
+const OVERSAMPLE_EMAIL = 8;
 const AUDIT_BATCH = 100;
 
 interface RunRow {
@@ -25,6 +27,8 @@ interface RunRow {
   status: string;
   target: number;
   sectors: string[];
+  /** Fornitore della ricerca: osm (predefinito) o google. */
+  provider: string;
   options: HuntOptions;
   plan: PlanArea[];
   cursor: number;
@@ -39,7 +43,14 @@ interface RunRow {
 
 export interface HuntWorkerDeps {
   log: Logger;
-  discovery: { config: DiscoveryConfig; providerId: string; configured: () => boolean; wake: () => void };
+  discovery: {
+    config: DiscoveryConfig;
+    /** Fornitore predefinito (le ricerche esistenti) e configurazione di ogni fornitore disponibile. */
+    providerId: string;
+    configured: () => boolean;
+    configuredFor?: (providerId: string) => boolean;
+    wake: () => void;
+  };
   audit: { config: AuditConfig; policy: FetchPolicy; wake: () => void };
   pollMs?: number;
   staleAfterMs?: number;
@@ -188,7 +199,13 @@ export class HuntWorker {
     if (run.phase === 'audit' && !run.current_job_id && auditDone) {
       const qualified = await countLinked(this.db, id, run.options, 'qualified');
       if (qualified >= run.target)
-        await this.finish(id, 'completed', `Obiettivo raggiunto: ${qualified} aziende che soddisfano i criteri.`);
+        await this.finish(
+          id,
+          'completed',
+          run.options.publicEmail
+            ? `Obiettivo raggiunto: ${qualified} aziende con un’email pubblica (indicata dalla fonte o scritta sul loro sito).`
+            : `Obiettivo raggiunto: ${qualified} aziende che soddisfano i criteri.`,
+        );
       else
         await this.finish(
           id,
@@ -244,22 +261,27 @@ export class HuntWorker {
     const qualified = await countLinked(this.db, run.id, run.options, 'qualified');
     const candidates = await countLinked(this.db, run.id, run.options, 'candidate');
     const needsAudit = run.options.minScore !== null || run.options.websitePreference === 'website_issues';
-    const enough =
-      qualified >= run.target || (!needsAudit && candidates >= run.target) || candidates >= run.target * OVERSAMPLE;
+    // email pubbliche: quelle già trovate più quelle attese dai siti ancora da controllare (quota misurata)
+    const forecast = run.options.publicEmail ? await emailForecast(this.db, run.id, run.options) : null;
+    const enough = forecast
+      ? qualified >= run.target || forecast.expected >= run.target || candidates >= run.target * OVERSAMPLE_EMAIL
+      : qualified >= run.target || (!needsAudit && candidates >= run.target) || candidates >= run.target * OVERSAMPLE;
     if (enough || run.cursor >= run.plan.length) {
       await this.db.query("UPDATE hunt_runs SET phase = 'audit', updated_at = now() WHERE id = $1", [run.id]);
       await this.message(
         run.id,
         'info',
         enough
-          ? `Scoperta conclusa: ${candidates} aziende candidate raccolte${needsAudit ? ' (il punteggio di alcune dipende ancora dalle verifiche dei siti)' : ''}.`
+          ? forecast
+            ? `Scoperta conclusa: ${forecast.withEmail} aziende con email pubblica e ${forecast.pending} siti ancora da controllare (circa ${Math.round(forecast.rate * 100)}% dei siti controllati pubblica un indirizzo).`
+            : `Scoperta conclusa: ${candidates} aziende candidate raccolte${needsAudit ? ' (il punteggio di alcune dipende ancora dalle verifiche dei siti)' : ''}.`
           : `Tutte le aree cercate: ${candidates} aziende candidate raccolte.`,
       );
       return;
     }
     const area = run.plan[run.cursor]!;
     const remainingAreas = run.plan.length - run.cursor;
-    const remaining = Math.max(1, run.target - (needsAudit ? qualified : candidates));
+    const remaining = Math.max(1, run.target - (forecast ? forecast.expected : needsAudit ? qualified : candidates));
     // quota per area: l'obiettivo restante diviso tra le regioni ancora da visitare (ricerca su tutta Italia: una
     // provincia per regione a turno, quindi il primo giro tocca tutte le regioni), altrimenti tra le province
     // restanti; con un margine per doppioni, aziende escluse o già note. La scoperta si ferma comunque all'obiettivo.
@@ -269,7 +291,13 @@ export class HuntWorker {
     const spread = regionsLeft > 1 ? Math.min(regionsLeft, remainingAreas) : remainingAreas;
     const cfg = this.deps.discovery.config;
     const quota = Math.min(cfg.maxResultsPerJob, Math.max(20, Math.ceil((remaining * 1.1) / spread)));
-    const limitPerSector = Math.min(20, Math.max(1, Math.ceil(quota / (area.municipalities * run.sectors.length))));
+    // con uno o due settori il limite per comune sale: il capoluogo (cercato per primo) ha molte attività dello
+    // stesso tipo (es. farmacie), mentre i piccoli comuni ne hanno una o due; la quota dell'area limita comunque il totale
+    const minPerSector = run.sectors.length <= 2 ? 10 : 1;
+    const limitPerSector = Math.min(
+      20,
+      Math.max(minPerSector, Math.ceil(quota / (area.municipalities * run.sectors.length))),
+    );
     try {
       const jobId = await createJob(
         this.db,
@@ -281,11 +309,14 @@ export class HuntWorker {
           maxResults: quota,
           minCompleteness: 0,
           requireWebsite: false,
+          requireContact: run.options.publicEmail ?? false,
         },
         {
           userId,
-          provider: this.deps.discovery.providerId,
-          providerConfigured: this.deps.discovery.configured(),
+          provider: run.provider ?? this.deps.discovery.providerId,
+          providerConfigured:
+            this.deps.discovery.configuredFor?.(run.provider ?? this.deps.discovery.providerId) ??
+            this.deps.discovery.configured(),
           config: cfg,
           huntRunId: run.id,
         },
@@ -297,7 +328,13 @@ export class HuntWorker {
       this.deps.discovery.wake();
     } catch (error) {
       if (error instanceof JobError && error.code === 'PROVIDER_NOT_CONFIGURED') {
-        await this.pause(run.id, 'not_configured', 'Server OpenStreetMap non configurato: ricerca sospesa.');
+        await this.pause(
+          run.id,
+          'not_configured',
+          run.provider === 'google'
+            ? 'Google Places non configurato (GOOGLE_PLACES_API_KEY): ricerca sospesa.'
+            : 'Server OpenStreetMap non configurato: ricerca sospesa.',
+        );
         return;
       }
       if (error instanceof JobError && error.code === 'DUPLICATE_JOB' && error.jobId) {
@@ -339,14 +376,15 @@ export class HuntWorker {
           AND b.website_url IS NOT NULL AND NOT b.website_shared AND w.last_audit_id IS NULL
           AND NOT EXISTS (SELECT 1 FROM audit_job_items i JOIN audit_jobs j ON j.id = i.job_id
                            WHERE j.hunt_run_id = $1 AND i.business_id = b.id)
-        ORDER BY hb.linked_at, b.id LIMIT $2`,
+        ORDER BY (b.email IS NULL) DESC, hb.linked_at, b.id LIMIT $2`,
       [run.id, Math.min(AUDIT_BATCH, this.deps.audit.config.maxBusinessesPerJob)],
     );
     if (!rows.length) return true;
     try {
       const r = await createAuditJob(
         this.db,
-        { businessIds: rows.map((x) => x.id), performance: true },
+        // ricerche di email: solo le pagine del sito (le misure di velocità rallenterebbero i controlli)
+        { businessIds: rows.map((x) => x.id), performance: !run.options.publicEmail },
         { userId, config: this.deps.audit.config, policy: this.deps.audit.policy, huntRunId: run.id },
       );
       await this.db.query('UPDATE hunt_runs SET current_audit_job_id = $2, updated_at = now() WHERE id = $1', [

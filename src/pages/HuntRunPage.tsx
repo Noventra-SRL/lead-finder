@@ -146,11 +146,18 @@ export function HuntRunPage() {
   return (
     <>
       <p className="breadcrumb">
-        <Link to="/lead-hunter">Trova aziende</Link> / Ricerca
+        <Link to="/trova">Trova aziende</Link>
+        {run.category && (
+          <>
+            {' '}
+            / <Link to={`/trova?categoria=${run.category.id}`}>{run.category.label}</Link>
+          </>
+        )}{' '}
+        / Ricerca
       </p>
       <PageHeader
-        title={`${run.target.toLocaleString('it-IT')} aziende · ${run.area.name}`}
-        lede={`${run.sectors.length} ${run.sectors.length === 1 ? 'settore' : 'settori'}: ${run.sectors.map((s) => s.label).join(', ')}`}
+        title={`${run.category ? `${run.category.label} · ` : ''}${run.target.toLocaleString('it-IT')} aziende · ${run.area.name}`}
+        lede={`Fonte: ${run.provider.label} · ${run.sectors.length} ${run.sectors.length === 1 ? 'settore' : 'settori'}: ${run.sectors.map((s) => s.label).join(', ')}`}
       />
 
       <Section
@@ -169,7 +176,8 @@ export function HuntRunPage() {
           <p className="hunt-figure">
             <span className="hunt-figure__value mono">{p.qualified.toLocaleString('it-IT')}</span>
             <span className="hunt-figure__label">
-              di {run.target.toLocaleString('it-IT')} aziende che soddisfano i criteri (
+              di {run.target.toLocaleString('it-IT')}{' '}
+              {run.options.publicEmail ? 'aziende con un’email pubblica' : 'aziende che soddisfano i criteri'} (
               <span className="mono">{Math.min(100, Math.floor((p.qualified / run.target) * 100))}%</span>)
               {p.targetReached
                 ? ' · obiettivo raggiunto'
@@ -228,6 +236,22 @@ export function HuntRunPage() {
               </>
             )}
           </dd>
+          {distribution.categories.length > 0 && (
+            <>
+              <dt>Per categoria</dt>
+              <dd>
+                <ul className="plain-list">
+                  {distribution.categories.map((c) => (
+                    <li key={c.category ?? '-'}>
+                      {c.category ? <Link to={`/trova?categoria=${c.category}`}>{c.label}</Link> : c.label}:{' '}
+                      <span className="mono">{c.count}</span> (<span className="mono">{c.new}</span> nuove,{' '}
+                      <span className="mono">{c.count - c.new}</span> già presenti)
+                    </li>
+                  ))}
+                </ul>
+              </dd>
+            </>
+          )}
           <dt>Siti web</dt>
           <dd>
             <span className="mono">{p.websites.found}</span> con sito proprio indicato,{' '}
@@ -236,6 +260,28 @@ export function HuntRunPage() {
             <span className="mono">{p.websites.unreachable}</span> irraggiungibili,{' '}
             <span className="mono">{p.websites.invalid}</span> con indirizzo non valido,{' '}
             <span className="mono">{p.websites.unverified}</span> da verificare
+          </dd>
+          <dt>Email</dt>
+          <dd>
+            <span className="mono">{p.emails.public}</span> con email pubblica (
+            <span className="mono">{p.emails.publicNew}</span> nuove nel database,{' '}
+            <span className="mono">{p.emails.withSource}</span> con la pagina di provenienza) ·{' '}
+            <span className="mono">{p.emails.published}</span> scritte sul sito,{' '}
+            <span className="mono">{p.emails.toVerify}</span> indicate dalla fonte o da verificare ·{' '}
+            <span className="mono">{p.emails.missing}</span> senza email,{' '}
+            <span className="mono">{p.emails.awaiting}</span> siti ancora da controllare
+          </dd>
+          <dt>Valutazione commerciale</dt>
+          <dd>
+            <span className="mono">{p.awaitingAssessment}</span> in attesa della valutazione AI (le aziende entrano in
+            coda da sole; nessuna è segnata come valutata prima che la valutazione sia completata)
+          </dd>
+          <dt>Avanzamento</dt>
+          <dd>
+            <span className="mono">{p.checkpoint.areasDone}</span> aree cercate su{' '}
+            <span className="mono">{p.checkpoint.areasTotal}</span>
+            {p.checkpoint.lastArea && <> · ultima area avviata: {p.checkpoint.lastArea}</>}. Dopo un riavvio la ricerca
+            riprende da qui.
           </dd>
           <dt>Verifiche dei siti</dt>
           <dd>
@@ -269,6 +315,7 @@ export function HuntRunPage() {
             {PREFERENCE[run.options.websitePreference]}
             {run.options.minScore !== null && `, punteggio almeno ${run.options.minScore}`}
             {run.options.excludeKnown && ', solo aziende nuove'}
+            {run.options.publicEmail && ', solo aziende con un’email pubblica'}
           </dd>
           <dt>Tempi</dt>
           <dd>

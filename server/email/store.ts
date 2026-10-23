@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { AiError, type AiProvider } from '../ai/provider.ts';
 import { audit } from '../audit.ts';
@@ -8,8 +9,16 @@ import type { Db, Queryable } from '../db/client.ts';
 import { JobError } from '../discovery/jobs.ts';
 import { sectorById } from '../discovery/sectors.ts';
 import { availableObjectives, buildEmailContext, composeWithAi, standardEmail } from './compose.ts';
-import { toSendError, type EmailServices } from './sender.ts';
-import { TEMPLATE_ID, type ModeId, type ObjectiveId, type ToneId } from './template.ts';
+import { kindOfError, textToHtml, toSendError, type EmailServices } from './sender.ts';
+import {
+  FARMACUBE_TEMPLATE_ID,
+  templateForCategory,
+  templateOf,
+  type ModeId,
+  type ObjectiveId,
+  type TemplateId,
+  type ToneId,
+} from './template.ts';
 
 /*
  * Email commerciali (Fase 9): bozze, revisioni, generazione, invio.
@@ -59,6 +68,7 @@ interface Row {
   subject: string;
   body: string;
   template_id: string;
+  template_version: number;
   mode: ModeId;
   objective: ObjectiveId;
   tone: ToneId;
@@ -69,6 +79,14 @@ interface Row {
     verifiedFacts: { text: string; refs: string[] }[];
     inferences: { text: string; refs: string[] }[];
     unknowns: string[];
+    // dalla versione 2 del prompt (assenti nelle bozze precedenti)
+    summary?: string;
+    primaryService?: string | null;
+    evidenceQuality?: 'alta' | 'media' | 'bassa';
+    warnings?: string[];
+    promptVersion?: number;
+    /** Impronta delle prove usate per generare la bozza: dice su quale versione dei dati è stata scritta. */
+    evidenceHash?: string;
   } | null;
   ai_model: string | null;
   generated_at: Date | null;
@@ -106,6 +124,8 @@ function emailOut(r: Row) {
     subject: r.subject,
     body: r.body,
     templateId: r.template_id,
+    templateName: templateOf(r.template_id).name,
+    templateVersion: r.template_version,
     mode: r.mode,
     objective: r.objective,
     tone: r.tone,
@@ -148,16 +168,22 @@ interface BusinessInfo {
   email_kind: string | null;
   excluded_at: Date | null;
   excluded_reason: string | null;
+  /** Divieto di contatto che riguarda l'email (rifiuto commerciale su tutti i canali o sull'email, o CRM «non contattare»). */
+  email_forbidden: boolean;
   merged_into: string | null;
   website_url: string | null;
   municipality_name: string | null;
   sector: string | null;
+  primary_category: string | null;
 }
 
 async function business(db: Queryable, id: string): Promise<BusinessInfo> {
   const { rows } = await db.query<BusinessInfo>(
-    `SELECT id, name, email, email_kind, excluded_at, excluded_reason, merged_into, website_url, municipality_name, sector
-       FROM businesses WHERE id = $1`,
+    `SELECT b.id, b.name, b.email, b.email_kind, b.excluded_at, b.excluded_reason, b.merged_into, b.website_url,
+            b.municipality_name, b.sector, b.primary_category,
+            ((b.do_not_contact_at IS NOT NULL AND b.do_not_contact_scope IN ('tutti', 'email'))
+              OR EXISTS (SELECT 1 FROM crm_opportunities o WHERE o.business_id = b.id AND o.stage = 'non_contattare')) AS email_forbidden
+       FROM businesses b WHERE b.id = $1`,
     [id],
   );
   if (!rows[0]) throw new JobError(404, 'BUSINESS_NOT_FOUND', 'Azienda non trovata.');
@@ -224,6 +250,19 @@ export async function createEmail(
         mergedInto: b.merged_into,
       },
     );
+  // divieto di contatto ed esclusione: nessuna email, nemmeno in bozza, anche chiamando l'API direttamente
+  if (b.email_forbidden)
+    throw new JobError(
+      409,
+      'DO_NOT_CONTACT',
+      'L’azienda ha rifiutato le comunicazioni commerciali: il contatto via email è vietato.',
+    );
+  if (b.excluded_at)
+    throw new JobError(
+      409,
+      'BUSINESS_EXCLUDED',
+      'L’azienda è esclusa dalla prospezione: riportala tra i potenziali clienti per scriverle.',
+    );
   let opportunityId: string | null = null;
   if (input.opportunityId) {
     const { rows } = await db.query<{ business_id: string }>(
@@ -236,14 +275,16 @@ export async function createEmail(
       });
     opportunityId = input.opportunityId;
   } else opportunityId = (await openOpportunity(db, b.id))?.id ?? null;
-  const content = standardEmail();
+  // modello ufficiale della categoria: Farmacube per le farmacie, il modello standard per tutte le altre
+  const template = templateForCategory(b.primary_category);
+  const content = standardEmail(template.id);
   // indirizzo proposto: solo l'email generica pubblica della fonte (mai un indirizzo personale)
   const recipient = b.email && b.email_kind !== 'personal' ? b.email : null;
   return db.transaction(async (tx) => {
     const { rows } = await tx.query<{ id: string }>(
       `INSERT INTO commercial_emails (business_id, opportunity_id, create_request_id, recipient, recipient_source, subject, body,
-         template_id, mode, objective, tone, generated_at, status, created_by, updated_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'standard', 'presentazione', 'consulenziale', now(), 'draft', $9, $9)
+         template_id, template_version, mode, objective, tone, generated_at, status, created_by, updated_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $10, 'standard', 'presentazione', 'consulenziale', now(), 'draft', $9, $9)
        ON CONFLICT (create_request_id) DO NOTHING RETURNING id`,
       [
         b.id,
@@ -253,8 +294,9 @@ export async function createEmail(
         recipient ? 'public_source' : null,
         content.subject,
         content.body,
-        TEMPLATE_ID,
+        template.id,
         userId,
+        template.version,
       ],
     );
     if (!rows[0]) {
@@ -310,7 +352,7 @@ export async function getEmail(db: Queryable, id: string) {
       municipality: b.municipality_name,
       website: b.website_url,
       publicEmail: b.email && b.email_kind !== 'personal' ? b.email : null,
-      doNotContact: Boolean(b.excluded_at),
+      doNotContact: Boolean(b.excluded_at) || b.email_forbidden,
       doNotContactReason: b.excluded_reason,
       merged: Boolean(b.merged_into),
     },
@@ -506,6 +548,9 @@ export async function updateEmail(
  * Genera il testo (modello standard o AI) e lo salva come nuova revisione. Con modifiche salvate dopo l'ultima
  * generazione serve `overwrite: true` (conferma esplicita): la versione precedente resta comunque nelle revisioni.
  */
+/** Bozze con una generazione AI in corso in questo processo. */
+const generating = new Set<string>();
+
 export async function generateEmail(
   db: Db,
   id: string,
@@ -517,6 +562,8 @@ export async function generateEmail(
     serviceId: string | null;
     instructions: string | null;
     overwrite: boolean;
+    /** Modello da usare (cambio manuale o «Ripristina modello ufficiale»); predefinito: quello della bozza. */
+    templateId?: TemplateId;
   },
   deps: { provider: AiProvider | null },
   userId: string,
@@ -543,24 +590,52 @@ export async function generateEmail(
       fields: { serviceId: 'Scegli un servizio del catalogo.' },
     });
 
+  const template = templateOf(input.templateId ?? r.template_id);
   let content: { subject: string; body: string };
   let evidence: Row['evidence'] = [];
   let notes: Row['internal_notes'] = null;
   let model: string | null = null;
-  if (input.mode === 'standard') content = standardEmail();
+  if (input.mode === 'standard') content = standardEmail(template.id);
+  // Farmacube: senza un sito verificato non c'è nulla di vero da personalizzare; resta il testo ufficiale e il
+  // fornitore AI non viene chiamato (nessun costo)
+  else if (template.id === FARMACUBE_TEMPLATE_ID && !ctx.websiteVerified)
+    throw new JobError(
+      422,
+      'INSUFFICIENT_EVIDENCE',
+      'Informazioni insufficienti per una personalizzazione utile (sito della farmacia non verificato): resta il modello ufficiale Farmacube, invariato.',
+    );
   else {
     if (!deps.provider)
-      throw new JobError(503, 'AI_NOT_CONFIGURED', 'Personalizzazione AI non configurata: usa il modello standard.');
+      throw new JobError(
+        503,
+        'AI_NOT_CONFIGURED',
+        'Personalizzazione AI non configurata sul server: l’amministratore deve impostare AI_API_KEY nel file .env e riavviare il server. Intanto puoi usare il modello standard.',
+      );
+    // una sola generazione per bozza alla volta: un doppio clic non paga due chiamate al modello
+    if (generating.has(id))
+      throw new JobError(
+        409,
+        'GENERATION_IN_PROGRESS',
+        'Generazione già in corso per questa email: attendi il risultato.',
+      );
+    generating.add(id);
     try {
       const out = await composeWithAi(deps.provider, ctx, {
         objective: input.objective,
         tone: input.tone,
         instructions: input.instructions,
         serviceId: input.objective === 'servizio' ? input.serviceId : null,
+        templateId: template.id,
       });
       content = { subject: out.subject, body: out.body };
       evidence = out.evidence;
-      notes = out.notes;
+      notes = {
+        ...out.notes,
+        evidenceHash: createHash('sha256')
+          .update(JSON.stringify(ctx.evidence.map((e) => [e.id, e.text])))
+          .digest('hex')
+          .slice(0, 16),
+      };
       model = out.model;
     } catch (error) {
       if (error instanceof AiError)
@@ -570,6 +645,8 @@ export async function generateEmail(
           `${error.message} Il testo attuale non è stato modificato.`,
         );
       throw error;
+    } finally {
+      generating.delete(id);
     }
   }
   await db.transaction(async (tx) => {
@@ -581,7 +658,7 @@ export async function generateEmail(
       `UPDATE commercial_emails SET subject = $2, body = $3, mode = $4, objective = $5, tone = $6, service_id = $7,
               instructions = $8, evidence = $9, internal_notes = $10, ai_model = $11, generated_at = now(),
               edited_after_generation = false, status = $12, version = $13, updated_by = $14, updated_at = now(),
-              template_id = $15
+              template_id = $15, template_version = $16
         WHERE id = $1`,
       [
         id,
@@ -599,7 +676,8 @@ export async function generateEmail(
         input.mode === 'ai' ? 'review' : 'draft',
         version,
         userId,
-        TEMPLATE_ID,
+        template.id,
+        template.version,
       ],
     );
     await addRevision(tx, id, version, content, input.mode === 'ai' ? 'ai' : 'template', userId);
@@ -608,7 +686,7 @@ export async function generateEmail(
       action: 'email.generated',
       entityType: 'commercial_email',
       entityId: id,
-      details: { mode: input.mode, objective: input.objective, model },
+      details: { mode: input.mode, objective: input.objective, model, template: template.id },
     });
   });
 }
@@ -686,8 +764,10 @@ export async function precheck(db: Queryable, id: string, email: EmailServices):
         : `Stato «${STATUS_LABEL[r.status]}»: non si può inviare.`,
     );
   if (b.merged_into) blockers.push('L’azienda è stata unita a un’altra scheda.');
-  if (b.excluded_at)
-    blockers.push(`L’azienda è contrassegnata «non contattare»${b.excluded_reason ? ` (${b.excluded_reason})` : ''}.`);
+  if (b.email_forbidden)
+    blockers.push('L’azienda ha rifiutato le comunicazioni commerciali: il contatto via email è vietato.');
+  else if (b.excluded_at)
+    blockers.push(`L’azienda è esclusa dalla prospezione${b.excluded_reason ? ` (${b.excluded_reason})` : ''}.`);
   const valid = r.recipient ? recipientSchema.safeParse(r.recipient).success : false;
   const recipientState: Precheck['recipientState'] = !r.recipient
     ? 'missing'
@@ -779,10 +859,18 @@ export async function sendEmail(
   // stato «sending» in modo atomico: un secondo invio contemporaneo della stessa email non passa
   const attemptId = randomUUID();
   const locked = await db.transaction(async (tx) => {
-    const { rows } = await tx.query<{ recipient: string; subject: string; body: string; business_id: string }>(
+    const { rows } = await tx.query<{
+      recipient: string;
+      subject: string;
+      body: string;
+      business_id: string;
+      template_id: string;
+      template_version: number;
+      mode: ModeId;
+    }>(
       `UPDATE commercial_emails SET status = 'sending', sending_started_at = now(), updated_at = now()
         WHERE id = $1 AND version = $2 AND status IN ('draft', 'review', 'ready', 'failed')
-        RETURNING recipient, subject, body, business_id`,
+        RETURNING recipient, subject, body, business_id, template_id, template_version, mode`,
       [id, input.version],
     );
     if (!rows[0]) return null;
@@ -808,6 +896,7 @@ export async function sendEmail(
       to: locked.recipient,
       subject: locked.subject.replace(/[\r\n]+/g, ' '),
       text: locked.body,
+      html: textToHtml(locked.body),
       messageId,
     });
     email.record(true, 'Ultimo invio accettato dal server di posta.');
@@ -865,7 +954,7 @@ export async function sendEmail(
           // stesso istante dell'email: «ultimo contatto» coincide con l'invio
           occurredAt: new Date(sentRow[0]!.sent_at),
           summary: `Email commerciale inviata a ${locked.recipient}: ${locked.subject}`.slice(0, 300),
-          notes: `Accettata dal server di posta (${result.response}). La consegna nella casella del destinatario non è confermata.`,
+          notes: `Modello: ${templateOf(locked.template_id).name} (versione ${locked.template_version}${locked.mode === 'ai' ? ', personalizzata con AI' : ''}). Accettata dal server di posta (${result.response}). La consegna nella casella del destinatario non è confermata.`,
           userId,
         });
         await tx.query('UPDATE crm_activities SET email_id = $2 WHERE id = $1', [activityId, id]);
@@ -881,7 +970,7 @@ export async function sendEmail(
     return { outcome: 'accepted' as const, repeated: false };
   } catch (error) {
     const e = toSendError(error);
-    if (e.providerProblem) email.record(false, e.message);
+    if (e.providerProblem) email.record(false, e.message, kindOfError(e));
     await db.transaction(async (tx) => {
       await tx.query(
         `UPDATE commercial_emails SET status = 'failed', last_error = $2, failure_uncertain = $3, updated_at = now()

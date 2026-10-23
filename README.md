@@ -24,7 +24,15 @@ Nell'interfaccia i moduli non ancora sviluppati lo dichiarano apertamente: nessu
 
 Il menu ha quattro voci sotto «Principale»: **Dashboard** (`/`), **Trova aziende** (`/trova`), **Email commerciali**
 (`/email`) e **Impostazioni** (`/impostazioni`). Il lavoro quotidiano è: trovare un'azienda, aprire il messaggio già
-pronto con «Invia email», confermare e inviare (docs/email-commerciali.md, «Invio rapido»).
+pronto con «Invia email», confermare e inviare (docs/email-commerciali.md, «Invio rapido»). In «Trova aziende» le
+aziende sono organizzate per categoria (Farmacie, B&B e case vacanza, Ristoranti, Bar e caffetterie…), con i conteggi
+reali e la ricerca di nuove aziende per categoria (docs/categorie.md).
+
+La **Dashboard** mostra quattro numeri reali (aziende trovate, pronte da contattare, email inviate, in attesa di
+risposta, ciascuno collegato alla lista corrispondente) e la tabella «Migliori prospect da contattare»: ricerca, città,
+categoria, ordinamento e «Altri filtri» sono applicati dal server e restano nell'indirizzo della pagina; dalla riga si
+apre il composer («Invia email»), la scheda («Dettagli») o «Gestisci contatto». Le aziende escluse o da non contattare
+non compaiono.
 
 Le altre sezioni restano con le stesse pagine, gli stessi indirizzi e gli stessi dati, raggiungibili dalle pagine e da
 Impostazioni → «Strumenti avanzati»: Nuova ricerca di aziende (`/lead-hunter`, `/scoperta`), Database aziende
@@ -113,27 +121,28 @@ L'ultimo amministratore attivo non può essere disattivato né declassato.
 Tutte sono validate all'avvio: un valore non valido ferma il server con un messaggio che nomina la variabile (mai il valore).
 L'elenco commentato è in [`.env.example`](.env.example).
 
-| Variabile               | Predefinito           | Note                                                                                                              |
-| ----------------------- | --------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `NODE_ENV`              | (sviluppo)            | `production` in produzione, **impostata nell'ambiente del servizio, non in `.env`** (Vite la leggerebbe)          |
-| `DATABASE_URL`          | —                     | obbligatoria in produzione (`postgres://…`); se vuota in sviluppo → PGlite                                        |
-| `DATABASE_SSL`          | —                     | `require` per TLS verificato verso un PostgreSQL gestito                                                          |
-| `PGLITE_DATA_DIR`       | `.data/pglite`        | solo sviluppo                                                                                                     |
-| `API_HOST` / `API_PORT` | `127.0.0.1` / `8810`  |                                                                                                                   |
-| `APP_ORIGIN`            | —                     | obbligatoria e `https://` in produzione: unica origine ammessa per le modifiche                                   |
-| `TRUST_PROXY`           | —                     | `1` solo dietro un proxy affidabile (IP da `X-Forwarded-For`)                                                     |
-| `LOG_LEVEL`             | `debug` / `info`      | `debug`, `info`, `warn`, `error`                                                                                  |
-| `SESSION_IDLE_HOURS`    | `12`                  | inattività massima prima della disconnessione                                                                     |
-| `SESSION_MAX_DAYS`      | `7`                   | durata massima assoluta di una sessione                                                                           |
-| `DISCOVERY_*`           | vedi docs/scoperta.md | server Overpass, recapito, intervallo tra richieste, tentativi, limiti per ricerca, cache, esecuzione             |
-| `AUDIT_*`               | vedi docs/audit.md    | pagine per sito, tempi, dimensioni, porte, ritmo per sito, parallelismo, ripetizioni, esecuzione                  |
-| `SCORING_WORKER`        | `on`                  | ricalcoli dei punteggi in background in questo processo (pesi e fasce: Impostazioni, non variabili)               |
-| `PAGESPEED_API_KEY`     | —                     | facoltativa: misure PageSpeed Insights; resta sul server, mai esposta                                             |
-| `HUNTER_WORKER`         | `on`                  | coordinatore delle ricerche di lead in questo processo (vedi docs/lead-hunter.md)                                 |
-| `REMINDERS_WORKER`      | `on`                  | aggiornamento dei promemoria dei follow-up ogni 5 minuti in questo processo (docs/flusso-commerciale.md)          |
-| `SMTP_*`, `EMAIL_*`     | —                     | invio delle email commerciali: server SMTP, mittente, autorizzazione (docs/email-commerciali.md)                  |
-| `AI_API_KEY`            | —                     | facoltativa: valutazione commerciale con AI (Anthropic); resta sul server. Altre `AI_*` in docs/valutazione-ai.md |
-| `AI_AUTO_ASSESS`        | `on`                  | valutazione automatica di ogni azienda; `AI_AUTO_DAILY_LIMIT` (500) limita le valutazioni nelle 24 ore            |
+| Variabile               | Predefinito           | Note                                                                                                                      |
+| ----------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `NODE_ENV`              | (sviluppo)            | `production` in produzione, **impostata nell'ambiente del servizio, non in `.env`** (Vite la leggerebbe)                  |
+| `DATABASE_URL`          | —                     | obbligatoria in produzione (`postgres://…`); se vuota in sviluppo → PGlite                                                |
+| `DATABASE_SSL`          | —                     | `require` per TLS verificato verso un PostgreSQL gestito                                                                  |
+| `PGLITE_DATA_DIR`       | `.data/pglite`        | solo sviluppo                                                                                                             |
+| `API_HOST` / `API_PORT` | `127.0.0.1` / `8810`  |                                                                                                                           |
+| `APP_ORIGIN`            | —                     | obbligatoria e `https://` in produzione: unica origine ammessa per le modifiche                                           |
+| `TRUST_PROXY`           | —                     | `1` solo dietro un proxy affidabile (IP da `X-Forwarded-For`)                                                             |
+| `LOG_LEVEL`             | `debug` / `info`      | `debug`, `info`, `warn`, `error`                                                                                          |
+| `SESSION_IDLE_HOURS`    | `12`                  | inattività massima prima della disconnessione                                                                             |
+| `SESSION_MAX_DAYS`      | `7`                   | durata massima assoluta di una sessione                                                                                   |
+| `DISCOVERY_*`           | vedi docs/scoperta.md | server Overpass, recapito, intervallo tra richieste, tentativi, limiti per ricerca, cache, esecuzione                     |
+| `AUDIT_*`               | vedi docs/audit.md    | pagine per sito, tempi, dimensioni, porte, ritmo per sito, parallelismo, ripetizioni, esecuzione                          |
+| `SCORING_WORKER`        | `on`                  | ricalcoli dei punteggi in background in questo processo (pesi e fasce: Impostazioni, non variabili)                       |
+| `PAGESPEED_API_KEY`     | —                     | facoltativa: misure PageSpeed Insights; resta sul server, mai esposta                                                     |
+| `HUNTER_WORKER`         | `on`                  | coordinatore delle ricerche di lead in questo processo (vedi docs/lead-hunter.md)                                         |
+| `REMINDERS_WORKER`      | `on`                  | aggiornamento dei promemoria dei follow-up ogni 5 minuti in questo processo (docs/flusso-commerciale.md)                  |
+| `SMTP_*`, `EMAIL_*`     | —                     | invio delle email commerciali: server SMTP, mittente, autorizzazione (docs/email-commerciali.md)                          |
+| `AI_API_KEY`            | —                     | facoltativa: valutazione commerciale con AI (Anthropic); resta sul server. Altre `AI_*` in docs/valutazione-ai.md         |
+| `GOOGLE_PLACES_API_KEY` | —                     | facoltativa: ricerca con Google Maps (Places API New); resta sul server. Altre `GOOGLE_PLACES_*` in docs/google-places.md |
+| `AI_AUTO_ASSESS`        | `on`                  | valutazione automatica di ogni azienda; `AI_AUTO_DAILY_LIMIT` (500) limita le valutazioni nelle 24 ore                    |
 
 ## Salute del servizio
 
@@ -147,6 +156,8 @@ L'elenco commentato è in [`.env.example`](.env.example).
 - [docs/architettura.md](docs/architettura.md) — struttura, scelte tecniche, dipendenze, sicurezza, limiti noti.
 - [docs/scoperta.md](docs/scoperta.md) — scoperta di aziende: fornitore, regole d'uso, categorie, deduplica, job, licenze.
 - [docs/lead-hunter.md](docs/lead-hunter.md) — Lead Hunter: ricerca per obiettivo, settori, recapiti, esportazione CSV, esclusione, privacy.
+- [docs/categorie.md](docs/categorie.md) — categorie di «Trova aziende»: catalogo, classificazione con le prove, conteggi, ricerca per categoria.
+- [docs/google-places.md](docs/google-places.md) — Google Maps (Places API): configurazione, costi, condizioni d'uso, deduplica; email dai siti e contattabilità.
 - [docs/crm.md](docs/crm.md) — CRM: opportunità, pipeline e regole, attività, follow-up, numeri della dashboard.
 - [docs/flusso-commerciale.md](docs/flusso-commerciale.md) — esportazioni CSV/Excel, follow-up, promemoria, filtri salvati, report commerciali.
 - [docs/email-commerciali.md](docs/email-commerciali.md) — email commerciali: modello ufficiale, personalizzazione AI, bozze, invio SMTP confermato, CRM.

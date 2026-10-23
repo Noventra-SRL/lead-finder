@@ -1,4 +1,5 @@
 import { audit } from '../audit.ts';
+import { classifyOne } from '../categories/store.ts';
 import type { Queryable } from '../db/client.ts';
 import { fold, geo } from '../geo/geo.ts';
 import { completenessOf, type ProviderRecord } from './types.ts';
@@ -21,6 +22,8 @@ import { completenessOf, type ProviderRecord } from './types.ts';
 export const AUTO_MERGE_DISTANCE_M = 250;
 export const REVIEW_SAME_NAME_DISTANCE_M = 500;
 export const REVIEW_CONTAINED_NAME_DISTANCE_M = 100;
+/** Stessa attività da fonti diverse (regola 2 bis): stesso nome normalizzato entro questa distanza. */
+export const CROSS_PROVIDER_DISTANCE_M = 150;
 
 export type SaveOutcome = 'inserted' | 'updated' | 'unchanged' | 'merged' | 'duplicate_skipped' | 'skipped_incomplete';
 
@@ -31,6 +34,8 @@ export interface SaveContext {
   sourceDataAt: Date | null;
   minCompleteness: number;
   requireWebsite: boolean;
+  /** Solo attività con un recapito da controllare: sito proprio o email indicata dalla fonte. */
+  requireContact?: boolean;
   /** Record già visti in questo job (un elemento al confine tra due comuni compare due volte). */
   seen: Set<string>;
 }
@@ -69,6 +74,8 @@ function columnsOf(r: ProviderRecord) {
     phone: r.contacts.phone,
     email: r.contacts.email,
     email_kind: r.contacts.emailKind,
+    fax: r.contacts.fax ?? null,
+    phones_extra: r.contacts.phonesExtra?.length ? r.contacts.phonesExtra : null,
     website_url: r.websiteUrl,
     website_domain: r.websiteDomain,
     website_shared: r.websiteShared,
@@ -102,6 +109,8 @@ const COLUMNS: (keyof Columns)[] = [
   'phone',
   'email',
   'email_kind',
+  'fax',
+  'phones_extra',
   'website_url',
   'website_domain',
   'website_shared',
@@ -130,7 +139,11 @@ function diff(current: Columns, next: Partial<Columns>) {
   const changes: Record<string, { from: unknown; to: unknown }> = {};
   for (const [k, v] of Object.entries(next) as [keyof Columns, unknown][]) {
     if (k === 'search_name') continue;
-    if (current[k] !== v) changes[k] = { from: current[k], to: v };
+    const same =
+      Array.isArray(v) || Array.isArray(current[k])
+        ? JSON.stringify(current[k]) === JSON.stringify(v)
+        : current[k] === v;
+    if (!same) changes[k] = { from: current[k], to: v };
   }
   return changes;
 }
@@ -160,6 +173,43 @@ function fillMissing(current: Columns, candidate: Columns): Partial<Columns> {
     ].filter(Boolean).length;
   }
   return out;
+}
+
+/** Aggiornamento dalla fonte principale: i recapiti non vengono mai persi né sostituiti se trovati altrove. */
+async function keepContacts(tx: Queryable, current: BusinessRow, next: Columns): Promise<Partial<Columns>> {
+  const out: Partial<Columns> = { ...next };
+  for (const k of ['phone', 'fax', 'phones_extra'] as const) if (next[k] === null && current[k] !== null) delete out[k];
+  if (next.website_url === null && current.website_url !== null)
+    for (const k of ['website_url', 'website_domain', 'website_shared', 'has_website'] as const) delete out[k];
+  const { rows } = await tx.query<{ email_source: string | null }>(
+    'SELECT email_source FROM businesses WHERE id = $1',
+    [current.id],
+  );
+  const ownEmail = rows[0]?.email_source === 'website' || rows[0]?.email_source === 'manuale';
+  if ((next.email === null && current.email !== null) || ownEmail) {
+    delete out.email;
+    delete out.email_kind;
+  }
+  return out;
+}
+
+/** Campi corretti a mano (businesses.edited_fields) e colonne che una nuova lettura della fonte non sovrascrive. */
+export const EDIT_PROTECTED: Record<string, string[]> = {
+  name: ['name', 'search_name'],
+  email: ['email', 'email_kind', 'has_email'],
+  phone: ['phone', 'has_phone'],
+  fax: ['fax'],
+  website: ['website_url', 'website_domain', 'website_shared', 'has_website'],
+  address: ['address_street', 'address_housenumber', 'address_postcode', 'address_city', 'has_address'],
+  municipality: ['municipality_code', 'municipality_name', 'province_code', 'region_code'],
+};
+
+async function protectedColumns(tx: Queryable, businessId: string): Promise<Set<string>> {
+  const { rows } = await tx.query<{ edited_fields: string[] | null }>(
+    'SELECT edited_fields FROM businesses WHERE id = $1',
+    [businessId],
+  );
+  return new Set((rows[0]?.edited_fields ?? []).flatMap((f) => EDIT_PROTECTED[f] ?? []));
 }
 
 async function updateBusiness(tx: Queryable, id: string, changes: Partial<Columns>, verifiedAt: Date) {
@@ -228,11 +278,42 @@ const near = (a: Columns, b: Columns) =>
 const sameDomain = (a: Columns, b: Columns) =>
   Boolean(a.website_domain && !a.website_shared && a.website_domain === b.website_domain && !b.website_shared);
 
+/**
+ * Salvataggio di un record con la categoria commerciale aggiornata: ogni azienda nuova, aggiornata o a cui è stata
+ * collegata un'altra fonte viene (ri)classificata dalle sue prove (una categoria scelta a mano non cambia).
+ */
 export async function saveRecord(tx: Queryable, r: ProviderRecord, ctx: SaveContext): Promise<SaveResult> {
+  const result = await saveRecordData(tx, r, ctx);
+  if (result.businessId && result.outcome !== 'duplicate_skipped' && result.outcome !== 'skipped_incomplete') {
+    await classifyOne(tx, result.businessId);
+    await recordSourceEmail(tx, result.businessId, r, ctx.fetchedAt);
+  }
+  return result;
+}
+
+/**
+ * Provenienza di un'email indicata dalla fonte della scoperta: la scheda della fonte (es. il nodo OpenStreetMap) e la
+ * data in cui è stata letta. Solo se l'azienda ha un'email senza provenienza: un recapito trovato sul sito, inserito
+ * a mano o già attribuito non cambia.
+ */
+async function recordSourceEmail(tx: Queryable, businessId: string, r: ProviderRecord, fetchedAt: Date) {
+  if (r.provider !== 'osm' || !r.contacts.email) return;
+  await tx.query(
+    `UPDATE businesses SET email_source = 'osm', email_status = COALESCE(email_status, 'da_verificare'),
+            email_source_url = $2, email_found_at = COALESCE(email_found_at, $3)
+      WHERE id = $1 AND email = $4 AND email_source IS NULL`,
+    [businessId, r.sourceUrl.slice(0, 600), fetchedAt, r.contacts.email],
+  );
+}
+
+async function saveRecordData(tx: Queryable, r: ProviderRecord, ctx: SaveContext): Promise<SaveResult> {
   const key = `${r.provider}:${r.ref}`;
   if (ctx.seen.has(key)) return { outcome: 'duplicate_skipped', flaggedForReview: 0 };
   ctx.seen.add(key);
   if (completenessOf(r) < ctx.minCompleteness || (ctx.requireWebsite && !r.has.website))
+    return { outcome: 'skipped_incomplete', flaggedForReview: 0 };
+  // un sito su piattaforma condivisa (social, directory) non è un sito da controllare per le email
+  if (ctx.requireContact && !(r.has.website && !r.websiteShared) && !r.contacts.email)
     return { outcome: 'skipped_incomplete', flaggedForReview: 0 };
 
   const next = columnsOf(r);
@@ -273,9 +354,13 @@ export async function saveRecord(tx: Queryable, r: ProviderRecord, ctx: SaveCont
     );
     const { rows } = await tx.query<BusinessRow>(`${SELECT_BUSINESS} WHERE id = $1 FOR UPDATE`, [src.business_id]);
     const current = rows[0]!;
-    // un dato che la fonte non riporta più resta sconosciuto solo se la fonte è la principale
-    const changesWanted = src.is_primary ? next : fillMissing(current, next);
+    // la fonte principale aggiorna i dati dell'azienda, ma un recapito non viene mai cancellato da un valore vuoto e
+    // un'email trovata sul sito o inserita a mano non viene sostituita dalla fonte; le altre fonti completano i vuoti
+    const changesWanted = src.is_primary ? await keepContacts(tx, current, next) : fillMissing(current, next);
     const changes = diff(current, changesWanted);
+    // i campi corretti a mano in «Modifica» restano quelli scelti dalla persona
+    const locked = await protectedColumns(tx, current.id);
+    for (const k of locked) delete (changes as Record<string, unknown>)[k];
     const update = Object.fromEntries(Object.keys(changes).map((k) => [k, changesWanted[k as keyof Columns]]));
     if (changes.name) update.search_name = next.search_name;
     await updateBusiness(tx, current.id, update, ctx.fetchedAt);
@@ -297,7 +382,8 @@ export async function saveRecord(tx: Queryable, r: ProviderRecord, ctx: SaveCont
   // 2. stessa attività già presente con lo stesso sito, nello stesso punto. Senza coordinate basta lo stesso nome
   // nello stesso comune; con coordinate distanti si tratta di sedi diverse (catene, farmacie comunali con un unico
   // sito): restano separate e la coppia va in revisione ("Stesso sito web nello stesso comune").
-  const match = candidates.find((b) => {
+  let reason = 'stesso sito web e stessa posizione';
+  let match = candidates.find((b) => {
     if (!sameDomain(next, b)) return false;
     const distance = near(next, b);
     if (distance !== null) return distance <= AUTO_MERGE_DISTANCE_M;
@@ -307,6 +393,31 @@ export async function saveRecord(tx: Queryable, r: ProviderRecord, ctx: SaveCont
       b.municipality_code === next.municipality_code
     );
   });
+  // 2 bis. la stessa attività trovata da un'ALTRA fonte (es. OpenStreetMap e Google Maps), anche senza sito: nome
+  // normalizzato identico, entro CROSS_PROVIDER_DISTANCE_M e numeri civici non in contrasto. Due elementi della stessa
+  // fonte con lo stesso nome restano distinti (vanno in revisione, regola 3).
+  if (!match) {
+    const sameName = candidates.filter((b) => {
+      const distance = near(next, b);
+      return (
+        b.search_name === next.search_name &&
+        distance !== null &&
+        distance <= CROSS_PROVIDER_DISTANCE_M &&
+        !(b.address_housenumber && next.address_housenumber && b.address_housenumber !== next.address_housenumber)
+      );
+    });
+    for (const b of sameName) {
+      const { rows } = await tx.query(
+        'SELECT 1 FROM business_sources WHERE business_id = $1 AND provider = $2 LIMIT 1',
+        [b.id, r.provider],
+      );
+      if (!rows.length) {
+        match = b;
+        reason = `stesso nome a ${near(next, b)} m, trovata da un'altra fonte`;
+        break;
+      }
+    }
+  }
   if (match) {
     await upsertSourceRow(tx, r, match.id, false, ctx);
     const fill = fillMissing(match, next);
@@ -319,7 +430,7 @@ export async function saveRecord(tx: Queryable, r: ProviderRecord, ctx: SaveCont
       details: {
         source: key,
         jobId: ctx.jobId,
-        reason: 'stesso sito web e stessa posizione',
+        reason,
         filled: Object.keys(fill),
       },
     });

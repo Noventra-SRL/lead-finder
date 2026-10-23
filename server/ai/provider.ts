@@ -56,6 +56,8 @@ export interface AiProvider {
   assess(req: AiRequest): Promise<AiCallResult>;
   /** Risposta strutturata con uno schema qualsiasi (es. le email commerciali della Fase 9). */
   structured(req: AiRequest & { schema: z.ZodType; maxTokens?: number }): Promise<AiCallResult>;
+  /** Verifica chiave e modello senza generare testo (nessun costo in token). */
+  verify(): Promise<{ model: string }>;
 }
 
 export class AnthropicProvider implements AiProvider {
@@ -79,6 +81,16 @@ export class AnthropicProvider implements AiProvider {
 
   assess(req: AiRequest): Promise<AiCallResult> {
     return this.structured({ ...req, schema: aiOutputSchema });
+  }
+
+  // lettura delle informazioni del modello: conferma chiave, permessi e AI_MODEL senza consumare token
+  async verify(): Promise<{ model: string }> {
+    try {
+      const m = await this.client.models.retrieve(this.model);
+      return { model: m.id };
+    } catch (error) {
+      throw toAiError(error);
+    }
   }
 
   async structured(req: AiRequest & { schema: z.ZodType; maxTokens?: number }): Promise<AiCallResult> {
@@ -117,7 +129,10 @@ export class AnthropicProvider implements AiProvider {
 function toAiError(error: unknown): AiError {
   if (error instanceof AiError) return error;
   if (error instanceof Anthropic.AuthenticationError || error instanceof Anthropic.PermissionDeniedError)
-    return new AiError('auth', 'Chiave del fornitore AI non valida o senza permessi.');
+    return new AiError(
+      'auth',
+      'Chiave del fornitore AI non valida o senza permessi: controlla AI_API_KEY sul server e riavvialo.',
+    );
   if (error instanceof Anthropic.RateLimitError)
     return new AiError('rate_limited', 'Limite di richieste del fornitore AI raggiunto: riprova più tardi.', true);
   if (error instanceof Anthropic.APIConnectionTimeoutError)
@@ -156,6 +171,13 @@ export class FakeAiProvider implements AiProvider {
 
   assess(req: AiRequest): Promise<AiCallResult> {
     return this.structured({ ...req, schema: aiOutputSchema });
+  }
+
+  /** Esito della verifica: il modello, oppure l'errore impostato dal test. */
+  verifyError: AiError | null = null;
+
+  verify(): Promise<{ model: string }> {
+    return this.verifyError ? Promise.reject(this.verifyError) : Promise.resolve({ model: this.model });
   }
 
   async structured(req: AiRequest & { schema: z.ZodType }): Promise<AiCallResult> {

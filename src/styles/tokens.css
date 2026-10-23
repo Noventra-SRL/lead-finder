@@ -1,32 +1,43 @@
 /*
  * Design system di Lead Finder — valori di base.
- * Strumento interno di lavoro: carta calda, inchiostro, filetti sottili al posto di riquadri e ombre,
- * un solo colore d'accento (blu reale) e colori di segnale riservati agli stati.
+ * Strumento di lavoro commerciale: fondo bianco e grigio chiarissimo, testo blu notte, un solo accento blu
+ * brillante, colori di segnale riservati agli stati. Superfici morbide (angoli arrotondati, ombre leggere) solo dove
+ * aiutano a leggere: schede dei numeri, tabella, finestre.
  * Tipografia: IBM Plex Sans (testo), Plex Sans Condensed (titoli ed etichette), Plex Mono (dati, orari, codici).
  */
 
 :root {
-  --paper: #f4f3ef;
-  --surface: #fbfaf7;
-  --sunken: #ebe9e3;
-  --ink: #14161b;
-  --ink-2: #474c56;
-  /* testo secondario: contrasto ≥ 4.5:1 su carta e superfici (WCAG AA) */
-  --ink-3: #5f646d;
-  --rule: #d9d6ce;
-  --rule-strong: #14161b;
+  --paper: #f6f7f9;
+  --surface: #ffffff;
+  --sunken: #eef1f5;
+  --ink: #0f1b33;
+  --ink-2: #3f4b63;
+  /* testo secondario: contrasto ≥ 4.5:1 su fondo e superfici (WCAG AA) */
+  --ink-3: #566178;
+  --rule: #e1e5ec;
+  --rule-strong: #0f1b33;
 
-  --accent: #2343c9;
-  --accent-hover: #1a35a6;
-  --accent-wash: #e6eaf9;
+  --accent: #1d4ed8;
+  --accent-hover: #1a3fae;
+  --accent-wash: #e8efff;
   --on-accent: #ffffff;
 
-  --ok: #2b6e47;
-  --ok-wash: #e3efe7;
-  --warn: #8f5a00;
-  --warn-wash: #f6ecd8;
+  --ok: #1f6b45;
+  --ok-wash: #e4f4ea;
+  --warn: #8a4b00;
+  --warn-wash: #fdf0de;
   --danger: #b0261b;
-  --danger-wash: #f8e4e1;
+  --danger-wash: #fbe7e4;
+
+  /* sfondi tenui delle schede dei numeri (blu, verde, arancio, viola) e delle loro icone */
+  --tint-blue: #eef3ff;
+  --tint-blue-icon: #dbe6ff;
+  --tint-green: #ecf8f0;
+  --tint-green-icon: #d3efdc;
+  --tint-orange: #fff4e8;
+  --tint-orange-icon: #ffe2c2;
+  --tint-violet: #f3f0ff;
+  --tint-violet-icon: #e2dbff;
 
   --font-sans: 'IBM Plex Sans', system-ui, sans-serif;
   --font-cond: 'IBM Plex Sans Condensed', 'IBM Plex Sans', system-ui, sans-serif;
@@ -49,10 +60,12 @@
   --space-7: 48px;
   --space-8: 72px;
 
-  --radius: 2px;
+  --radius: 6px;
+  --radius-lg: 12px;
+  --shadow-soft: 0 1px 2px rgb(15 27 51 / 0.05), 0 4px 14px rgb(15 27 51 / 0.05);
   --rail-width: 248px;
-  --content-max: 1180px;
-  --focus: 0 0 0 2px var(--paper), 0 0 0 4px var(--accent);
+  --content-max: 1320px;
+  --focus: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent);
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
 
   color-scheme: light;

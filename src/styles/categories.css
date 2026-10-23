@@ -1,0 +1,307 @@
+/*
+ * Categorie di «Trova aziende». Stesso linguaggio del resto: filetti, inchiostro, un solo accento.
+ * Su schermo largo le categorie sono una colonna a sinistra (come un indice, con i numeri allineati a destra);
+ * su telefono diventano una striscia scorrevole sopra l'elenco, con la categoria scelta sottolineata.
+ */
+
+.trova {
+  display: grid;
+  grid-template-columns: 15.5rem minmax(0, 1fr);
+  gap: var(--space-6);
+  align-items: start;
+}
+
+.trova__main {
+  min-width: 0;
+}
+
+/* ---------- elenco delle categorie ---------- */
+
+.catnav {
+  min-width: 0;
+  position: sticky;
+  top: var(--space-5);
+  border-top: 2px solid var(--rule-strong);
+}
+
+.catnav__title {
+  margin: 0;
+  padding: var(--space-3) 0 var(--space-2);
+  font-family: var(--font-cond);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+/* contenitore delle parentesi nascoste dei conteggi (posizionate): restano dentro la striscia scorrevole */
+.catnav__list {
+  position: relative;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.catnav__item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 7px var(--space-2) 7px var(--space-3);
+  border-left: 2px solid transparent;
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+  text-decoration: none;
+  transition:
+    background-color 150ms var(--ease),
+    color 150ms var(--ease);
+}
+
+.catnav__item:hover {
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.catnav__item[aria-current='page'] {
+  border-left-color: var(--accent);
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* una categoria vuota resta cliccabile (si può cercare), ma non attira l'occhio */
+.catnav__item--empty .catnav__label {
+  color: var(--ink-3);
+}
+
+.catnav__count {
+  flex: none;
+  font-size: var(--text-xs);
+  color: var(--ink-3);
+}
+
+.catnav__item[aria-current='page'] .catnav__count {
+  color: var(--accent);
+}
+
+.catnav__list li:first-child .catnav__item {
+  margin-bottom: var(--space-1);
+  border-bottom: 1px solid var(--rule);
+}
+
+.catnav__note {
+  margin: var(--space-3) 0 0;
+  padding-left: var(--space-3);
+}
+
+/* ---------- intestazione e numeri della categoria ---------- */
+
+.cathead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-5);
+  padding-bottom: var(--space-3);
+  border-top: 2px solid var(--rule-strong);
+  padding-top: var(--space-3);
+}
+
+.cathead > div {
+  flex: 1 1 22rem;
+}
+
+.cathead__title {
+  margin: 0 0 var(--space-1);
+  font-family: var(--font-cond);
+  font-size: var(--text-xl);
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+}
+
+.cathead p {
+  margin: 0;
+}
+
+.catstats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0 0 var(--space-3);
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+}
+
+.catstats__item {
+  padding: var(--space-3) var(--space-3) var(--space-3) 0;
+}
+
+.catstats__item:not(:nth-child(4n + 1)) {
+  padding-left: var(--space-3);
+  border-left: 1px solid var(--rule);
+}
+
+.catstats__item:nth-child(n + 5) {
+  border-top: 1px solid var(--rule);
+}
+
+.catstats dt {
+  font-family: var(--font-cond);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.catstats dd {
+  margin: 2px 0 0;
+  font-size: var(--text-xl);
+  line-height: 1.1;
+}
+
+.category-discovery__notes {
+  margin: 0;
+  padding-left: 1.1em;
+}
+
+/* ---------- telefono e tablet ---------- */
+
+@media (max-width: 900px) {
+  .trova {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-4);
+  }
+
+  .catnav {
+    position: static;
+    border-top: 0;
+  }
+
+  .catnav__title {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+
+  .catnav__list {
+    display: flex;
+    overflow-x: auto;
+    gap: var(--space-4);
+    border-bottom: 1px solid var(--rule);
+    scrollbar-width: thin;
+  }
+
+  .catnav__list li {
+    flex: none;
+  }
+
+  .catnav__item,
+  .catnav__list li:first-child .catnav__item {
+    gap: var(--space-2);
+    margin: 0 0 -1px;
+    padding: var(--space-2) 0;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    background: none;
+    white-space: nowrap;
+  }
+
+  .catnav__item:hover {
+    background: none;
+  }
+
+  .catnav__item[aria-current='page'] {
+    border-bottom-color: var(--accent);
+    background: none;
+  }
+
+  .catnav__note {
+    padding-left: 0;
+  }
+}
+
+@media (max-width: 520px) {
+  .catstats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .catstats__item:nth-child(n) {
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .catstats__item:nth-child(even) {
+    padding-left: var(--space-3);
+    border-left: 1px solid var(--rule);
+  }
+
+  .catstats__item:nth-child(n + 3) {
+    border-top: 1px solid var(--rule);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .catnav__item {
+    transition: none;
+  }
+}
+
+/* ---------- scheda dell'azienda ---------- */
+
+.category-control {
+  margin: calc(-1 * var(--space-3)) 0 var(--space-3);
+}
+
+.category-control p {
+  margin: 0;
+}
+
+.category-control__edit summary {
+  width: fit-content;
+  margin-top: var(--space-1);
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.category-control__edit .row {
+  align-items: flex-end;
+  margin-top: var(--space-2);
+}
+
+/* ---------- email dai siti ---------- */
+
+.enrich {
+  display: grid;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.enrich p {
+  margin: 0;
+}
+
+.email-status {
+  display: block;
+  margin-top: 2px;
+  color: var(--ink-3);
+  font-size: var(--text-xs);
+}
+
+.email-status--ok {
+  color: var(--ok);
+}
+
+.site-emails {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.site-emails li {
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--rule);
+}
